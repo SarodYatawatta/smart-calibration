@@ -1,5 +1,5 @@
 # Smart Calibration
-Using reinforcement learning for hyperparameter tuning in calibration of radio telescopes, and in other data processing pipelines (like elastic net regerssion).
+Using reinforcement learning for hyperparameter tuning in calibration of radio telescopes, and in other data processing pipelines (like elastic net regerssion). Code to accompany the paper **Deep reinforcement learning for smart calibration of radio telescopes**.
 
 RL agent code is based on [this code](https://github.com/philtabor/Youtube-Code-Repository.git).
 
@@ -12,9 +12,9 @@ Files included are:
 
 ``` enetenv.py ```: openai.gym environment
 
-``` enet_td3.py  ```:  TD3 training
+``` enet_td3.py  ```:  TD3 agent
 
-``` enet_ddpg.py ```: DDPG training
+``` enet_ddpg.py ```: DDPG agent
 
 ``` enet_eval.py ```: evaluation
 
@@ -42,9 +42,9 @@ Files included are:
 
 ``` analysis.py ```: calculate influence function/map
 
-``` calib_td3.py ```: TD3 training
+``` calib_td3.py ```: TD3 agent
 
-``` calib_ddpg.py ```: DDPG training
+``` calib_ddpg.py ```: DDPG agent
 
 ``` lbfgsnew.py ```: LBFGS optimizer
 
@@ -59,10 +59,11 @@ Files included are:
 ``` dosimul.sh  ```: shell wrapper to run simulations
 
 Others:
+inspect_replaybuffer.py
 addcol.py
 changefreq.py
 readcorr.py
 writecorr.py
 addnoise.py 
 doall.sh           
-calmean.sh              
+calmean.sh
