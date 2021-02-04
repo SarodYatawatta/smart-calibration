@@ -27,8 +27,10 @@ Files included are:
 ## Calibration
 
 Additional packages: casacore-python, astropy, pyfits, openmpi
-Calibration software: SAGECal
-Imaging software: Excon
+
+Calibration software: [SAGECal](https://github.com/nlesc-dirac/sagecal)
+
+Imaging software: [Excon](https://sourceforge.net/projects/exconimager/)
 
 Files included are:
 
