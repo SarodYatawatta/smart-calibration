@@ -6,6 +6,8 @@ RL agent code is based on [this code](https://github.com/philtabor/Youtube-Code-
 Implemented in PyTorch, using openai.gym.
 ## Elastic net regression
 
+Run ``` main_ddpg.py ``` or ``` main_td3.py ``` to use DDPG or TD3.
+
 Files included are:
 
 ``` autograd_tools.py ```: utilities to calculate Jacobian, inverse Hessian-vector product etc.
@@ -31,6 +33,10 @@ Additional packages: casacore-python, astropy, pyfits, openmpi
 Calibration software: [SAGECal](https://github.com/nlesc-dirac/sagecal)
 
 Imaging software: [Excon](https://sourceforge.net/projects/exconimager/)
+
+
+Run ``` main_ddpg.py ``` or ``` main_td3.py ``` to use DDPG or TD3. You can copy some example data from
+[here](https://github.com/nlesc-dirac/sagecal/tree/master/test/Calibration).
 
 Files included are:
 
