@@ -58,12 +58,20 @@ Files included are:
 
 ``` dosimul.sh  ```: shell wrapper to run simulations
 
-Others:
-inspect_replaybuffer.py
-addcol.py
-changefreq.py
-readcorr.py
-writecorr.py
-addnoise.py 
-doall.sh           
-calmean.sh
+``` inspect_replaybuffer.py ```: inspect the replay buffer contents
+
+The following scripts are for handling radio astronomical (MS) data
+
+``` addcol.py ```: add new column to write data
+
+``` changefreq.py ```: change observing frequency
+
+``` readcorr.py ```: read data and output as text
+
+``` writecorr.py ```: write text input and write to MS
+
+``` addnoise.py  ```: add AWGN to data
+
+``` calmean.sh ```: calculate mean image
+
+``` doall.sh ```: wrapper to do simulation, calibration, and influence map generation

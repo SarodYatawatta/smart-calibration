@@ -93,8 +93,8 @@ class CriticNetwork(nn.Module):
         init_layer(self.fc21)
         init_layer(self.fc3,0.003) # last layer 
 
-        #self.optimizer = optim.Adam(self.parameters(), lr=lr)
-        self.optimizer = LBFGSNew(self.parameters(), history_size=7, max_iter=1, line_search_fn=True,batch_mode=True)
+        self.optimizer = optim.Adam(self.parameters(), lr=lr)
+        #self.optimizer = LBFGSNew(self.parameters(), history_size=7, max_iter=1, line_search_fn=True,batch_mode=True)
         self.device = mydevice
         self.checkpoint_file = os.path.join('./', name+'_td3_critic.model')
 
@@ -139,8 +139,8 @@ class ActorNetwork(nn.Module):
         init_layer(self.fc2)
         init_layer(self.fc3,0.003) # last layer
 
-        #self.optimizer = optim.Adam(self.parameters(), lr=lr)
-        self.optimizer = LBFGSNew(self.parameters(), history_size=7, max_iter=1, line_search_fn=True,batch_mode=True)
+        self.optimizer = optim.Adam(self.parameters(), lr=lr)
+        #self.optimizer = LBFGSNew(self.parameters(), history_size=7, max_iter=1, line_search_fn=True,batch_mode=True)
         self.device = mydevice
         self.checkpoint_file = os.path.join('./', name+'_td3_actor.model')
 
