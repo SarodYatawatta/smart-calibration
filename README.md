@@ -28,7 +28,7 @@ Files included are:
 
 ## Calibration
 
-Additional packages: casacore-python, astropy, pyfits, openmpi
+Additional packages: python-casacore, astropy, pyfits, openmpi
 
 Calibration software: [SAGECal](https://github.com/nlesc-dirac/sagecal)
 
