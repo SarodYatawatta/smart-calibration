@@ -30,7 +30,7 @@ Files included are:
 
 Additional packages: python-casacore, astropy, pyfits, openmpi
 
-Calibration software: [SAGECal](https://github.com/nlesc-dirac/sagecal)
+Simulation and Calibration software: [SAGECal](https://github.com/nlesc-dirac/sagecal)
 
 Imaging software: [Excon](https://sourceforge.net/projects/exconimager/)
 
@@ -42,7 +42,7 @@ Files included are:
 
 ``` calibration_tools.py ```: utility routines
 
-``` simulate.py ```: simulate data
+``` simulate.py ```: generated sky models, systematic errors for data simulation 
 
 ``` calibenv.py ```: openai.gym environment
 

@@ -2,6 +2,9 @@
 # copy new admm_rho
 cp admm_rho_new.txt admm_rho.txt
 
+# Note: data files are L_SB1.MS, L_SB2.MS ... L_SB8.MS
+
+# select GPUs to use
 export CUDA_VISIBLE_DEVICES=0,1
 # run calibration
 mpirun -np 3 /home/sarod/work/DIRAC/sagecal/build/dist/bin/sagecal-mpi -f 'L_SB[1-8].MS' -A 6 -P 2 -r 2.0 -s sky.txt -c cluster.txt -I DATA -O MODEL_DATA -p zsol -G admm_rho.txt -n 2 -t 10 -e 4 -g 2 -l 10 -m 7 -x 30 -F 1 -L 2 -V -N 0 -U 0

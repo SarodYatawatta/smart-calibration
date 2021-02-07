@@ -4,7 +4,6 @@ export CUDA_VISIBLE_DEVICES=0,1
 
 #let "ci = 1";
 let "ci = 4"; # only use mid frequency
-alias matlab='LD_PRELOAD="/usr/lib/gcc/x86_64-linux-gnu/5.2.1/libstdc++.so" matlab -nodesktop -nosplash'
 while [ $ci -le 4 ]; do # -le 8 for all freqs
  if [ $ci -le 9 ]; then
   MS="L_SB"$ci".MS";

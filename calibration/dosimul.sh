@@ -3,6 +3,10 @@
 # simulate solutions, sky model
 #python simulate.py
 
+# Note: template data file ~/small.ms
+# replace this with your template data file
+# this script will create data files L_SB1.MS L_SB2.MS ... L_SB8.MS
+
 export CUDA_VISIBLE_DEVICES=0,1
 
 declare -a freqlist=(000.000 115   125   135   145   155   165   175   185);
