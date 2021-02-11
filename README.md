@@ -37,6 +37,12 @@ Simulation and Calibration software: [SAGECal](https://github.com/nlesc-dirac/sa
 Imaging software: [Excon](https://sourceforge.net/projects/exconimager/)
 
 
+### Influence maps
+Influence maps give a visual representation of the [influence function](https://academic.oup.com/mnras/article/486/4/5646/5484901) of radio interferometric calibration. Here is a sample:
+
+<img src="figures/influence_maps.png" alt="Influence maps" width="700"/>
+
+
 Run ``` main_ddpg.py ``` or ``` main_td3.py ``` to use DDPG or TD3. You can copy some example data from
 [here](https://github.com/nlesc-dirac/sagecal/tree/master/test/Calibration).
 
