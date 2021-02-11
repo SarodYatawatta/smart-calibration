@@ -6,6 +6,8 @@ RL agent code is based on [this code](https://github.com/philtabor/Youtube-Code-
 Implemented in PyTorch, using openai.gym.
 ## Elastic net regression
 
+<img src="figures/enet_pipeline.png" alt="Elastic net regression agent and environment" width="700"/>
+
 Run ``` main_ddpg.py ``` or ``` main_td3.py ``` to use DDPG or TD3.
 
 Files included are:
