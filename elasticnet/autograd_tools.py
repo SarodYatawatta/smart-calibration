@@ -66,3 +66,72 @@ def inv_hessian_mult(opt,q):
  return r
 
 
+################################################
+# return gradient vector
+# also set gradient to None (to prevent memory leaks)
+def gather_flat_grad(model):
+   views=[]
+   for s in model.parameters():
+      if s.grad is not None:
+         views.append(s.grad.data.view(-1))
+         s.grad=None
+   return torch.cat(views,0)   
+ 
+
+
+# Return influcence function size: output x input
+# model: nn.Module, with forward() and backward() methods
+# Output y = model(x)
+# model parameters are theta, stored internally
+# opt: LBFGS optimizer, re-used for inverse Hessian
+def influence_matrix(model,xshape,yshape,opt=None):
+ # xshape: x (input) shape
+ # yshape: y (output) shape
+ 
+ # pass all ones input via the model
+ x=torch.ones(xshape,requires_grad=True).to(mydevice)
+ y=torch.ones(yshape,requires_grad=False).to(mydevice)
+ # vectorize
+ xx=x.view(-1)
+ N=xx.shape[0]
+ y=y.view(-1)
+ M=y.shape[0]
+
+ # labels: vector of 1
+ labels=torch.ones_like(y).to(mydevice)
+
+ def l2loss(ytrue,xin):
+    ypred=model(xin) 
+    return torch.sum((ytrue-ypred)**2)
+
+
+ # storage MxN for Influence function
+ If=torch.zeros(M,N).to(mydevice)
+
+ # outer loop over N (because we have to calculate inv(Hessian)
+ for ci in range(N):
+   # right hand side
+   # d( loss() )/d(x^T)
+   g=gradient(l2loss(labels,x),x)
+   g=g.view(-1)
+   # find d( d( loss() )/dx^T ) / d(theta) by backward()
+   g[ci].backward()
+   ddf_dxdtheta=gather_flat_grad(model)
+   # pass this through inverse(Hessian)
+   if opt:
+     iddf=inv_hessian_mult(opt,ddf_dxdtheta)
+   else:
+     iddf=ddf_dxdtheta
+
+   # inner loop over M
+   for cj in range(M):
+     y=model(x)
+     y=y.view(-1)
+     # Jacobian d(model) / dtheta^T
+     y[cj].backward()
+     jvec=gather_flat_grad(model)
+
+     # find dot product
+     If[cj,ci]=torch.dot(iddf,jvec)
+
+ return If

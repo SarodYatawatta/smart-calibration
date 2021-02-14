@@ -1,5 +1,5 @@
 # Smart Calibration
-Using reinforcement learning for hyperparameter tuning in calibration of radio telescopes, and in other data processing pipelines (like elastic net regerssion). Code to accompany the paper [Deep reinforcement learning for smart calibration of radio telescopes](https://arxiv.org/abs/2102.03200).
+Using reinforcement learning for hyperparameter tuning in calibration of radio telescopes, and in other data processing pipelines (like elastic net regression). Code to accompany the paper [Deep reinforcement learning for smart calibration of radio telescopes](https://arxiv.org/abs/2102.03200).
 
 RL agent code is based on [this code](https://github.com/philtabor/Youtube-Code-Repository.git).
 
@@ -42,7 +42,11 @@ Influence maps give a visual representation of the [influence function](https://
 
 <img src="figures/influence_maps.png" alt="Influence maps" width="700"/>
 
-We use influence maps as part of the state representation.
+We use influence maps as part of the state representation. An analogy to this is visualizing an untrained and (partially) trained CNN model (AlexNet). The figures show the influence function for CIFAR10 classifier using AlexNet. With training, the figures become less random, but still has non-zero features implying over/under fitting in the training.
+
+<img src="figures/alexnet_untrained.png" alt="Alexnet untrained" width="300"/>
+
+<img src="figures/alexnet_trained.png" alt="Alexnet trained" width="300"/>
 
 Run ``` main_ddpg.py ``` or ``` main_td3.py ``` to use DDPG or TD3. You can copy some example data from
 [here](https://github.com/nlesc-dirac/sagecal/tree/master/test/Calibration).
