@@ -42,11 +42,15 @@ Influence maps give a visual representation of the [influence function](https://
 
 <img src="figures/influence_maps.png" alt="Influence maps" width="700"/>
 
-We use influence maps as part of the state representation. An analogy to this is visualizing an untrained and (partially) trained CNN model (AlexNet). The figures show the influence function for CIFAR10 classifier using AlexNet. With training, the figures become less random, but still has non-zero features implying over/under fitting in the training.
+We use influence maps as part of the state representation. An analogy to this is visualizing an untrained and a trained CNN model. The figures below show the influence function for CIFAR10 classifier using AlexNet (untrained), AlexNet (trained) and ResNet18 (trained). With training, the figures become less random, but still has non-zero features implying overfitting in the training.
 
 <img src="figures/alexnet_untrained.png" alt="Alexnet untrained" width="300"/>
 
 <img src="figures/alexnet_trained.png" alt="Alexnet trained" width="300"/>
+
+<img src="figures/resnet18_trained.png" alt="ResNet18 trained" width="300"/>
+
+Note the difference between the trained AlexNet (65% accuracy) and ResNet18 (80% accuracy), the latter has much less bias.
 
 Run ``` main_ddpg.py ``` or ``` main_td3.py ``` to use DDPG or TD3. You can copy some example data from
 [here](https://github.com/nlesc-dirac/sagecal/tree/master/test/Calibration).
