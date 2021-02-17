@@ -29,7 +29,7 @@ if __name__ == '__main__':
         done = False
         observation = env.reset()
         loop=0
-        while (not done) and loop<30: # limit number of loops as well
+        while (not done) and loop<2: # limit number of loops as well
             action = agent.choose_action(observation)
             observation_, reward, done, info = env.step(action)
             score += reward

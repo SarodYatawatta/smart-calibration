@@ -20,6 +20,8 @@ else:
 LOW=0.01
 HIGH=100.
 
+EPS=0.01 # to make 1/(x+EPS) when x->0 not explode
+
 class CalibEnv(gym.Env):
   """Custom Environment that follows gym interface"""
   metadata = {'render.modes': ['human']}
@@ -127,7 +129,7 @@ class CalibEnv(gym.Env):
          'sky': self.sky }
     # reward: residual error, normalized by data power
     # good calibration sigma0>sigma1, so reward > 1
-    reward=sigma0/sigma1+1./data.std()+penalty
+    reward=sigma0/sigma1+1./(data.std()+EPS)+penalty
     info={}
     return observation, reward, done, info
 

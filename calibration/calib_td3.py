@@ -285,7 +285,7 @@ class Agent():
           state_sky = T.tensor([observation['sky']],dtype=T.float32).to(mydevice)
           mu = self.actor.forward(state,state_sky).to(mydevice)
 
-        mu_prime = mu + T.tensor(np.random.normal(scale=self.noise),
+        mu_prime = mu + T.tensor(np.random.normal(scale=self.noise,size=(self.n_actions,)),
                                  dtype=T.float).to(mydevice)
         mu_prime = T.clamp(mu_prime,self.min_action,self.max_action)
         self.time_step +=1

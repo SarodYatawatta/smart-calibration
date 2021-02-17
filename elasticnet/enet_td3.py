@@ -131,13 +131,16 @@ class ActorNetwork(nn.Module):
         self.n_actions = n_actions
         self.fc1 = nn.Linear(*self.input_dims, 512)
         self.fc2 = nn.Linear(512, 256)
-        self.fc3 = nn.Linear(256, self.n_actions)
+        self.fc3 = nn.Linear(256, 128)
+        self.fc4 = nn.Linear(128, self.n_actions)
         self.bn1 = nn.LayerNorm(512)
         self.bn2 = nn.LayerNorm(256)
+        self.bn3 = nn.LayerNorm(128)
 
         init_layer(self.fc1)
         init_layer(self.fc2)
-        init_layer(self.fc3,0.003) # last layer
+        init_layer(self.fc3)
+        init_layer(self.fc4,0.003) # last layer
 
         self.optimizer = optim.Adam(self.parameters(), lr=lr)
         #self.optimizer = LBFGSNew(self.parameters(), history_size=7, max_iter=1, line_search_fn=True,batch_mode=True)
@@ -149,7 +152,8 @@ class ActorNetwork(nn.Module):
     def forward(self, x):
         x=F.elu(self.bn1(self.fc1(x)))
         x=F.elu(self.bn2(self.fc2(x)))
-        actions=T.tanh(self.fc3(x)) # in [-1,1], scale up and shift as needed (in the environment)
+        x=F.elu(self.bn3(self.fc3(x)))
+        actions=T.tanh(self.fc4(x)) # in [-1,1], scale up and shift as needed (in the environment)
 
         return actions
 
@@ -240,7 +244,7 @@ class Agent():
           state = T.cat((observation['eig'],observation['A'])).to(mydevice)
           mu = self.actor.forward(state).to(mydevice)
 
-        mu_prime = mu + T.tensor(np.random.normal(scale=self.noise),
+        mu_prime = mu + T.tensor(np.random.normal(scale=self.noise,size=(self.n_actions,)),
                                  dtype=T.float).to(mydevice)
         mu_prime = T.clamp(mu_prime,self.min_action,self.max_action)
 
