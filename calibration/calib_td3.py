@@ -386,6 +386,7 @@ class Agent():
         self.critic_2.train()
         self.target_critic_1.eval()
         self.target_critic_2.eval()
+        self.update_network_parameters(tau=1.)
 
 
 #a=Agent(gamma=0.99, batch_size=32, n_actions=2, M=4,

@@ -346,6 +346,7 @@ class Agent():
         self.critic_2.train()
         self.target_critic_1.eval()
         self.target_critic_2.eval()
+        self.update_network_parameters(tau=1.)
 
     def load_models_for_eval(self):
         self.actor.load_checkpoint_for_eval()
