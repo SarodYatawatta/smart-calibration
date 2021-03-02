@@ -91,7 +91,7 @@ def readsolutions(filename):
   curline=next(fh)
   cl=curline.split()
   freq=float(cl[0])*1e6
-  Ns=int(cl[4]) # stations
+  Ns=int(cl[3]) # stations
   K=int(cl[5]) # true directions
   fullset=fh.readlines()
   Nt=len(fullset)
