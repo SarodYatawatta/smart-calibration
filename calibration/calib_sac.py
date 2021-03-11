@@ -359,7 +359,7 @@ class Agent():
 
         state = T.tensor([observation['img']],dtype=T.float32).to(mydevice)
         state_sky = T.tensor([observation['sky']],dtype=T.float32).to(mydevice)
-        actions,_ = self.actor.forward(state,state_sky).to(mydevice)
+        actions,_ = self.actor.forward(state,state_sky)
 
         self.actor.train() # to enable batchnorm
 
