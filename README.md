@@ -3,12 +3,15 @@ Using reinforcement learning for hyperparameter tuning in calibration of radio t
 
 RL agent code is based on [this code](https://github.com/philtabor/Youtube-Code-Repository.git).
 
-Implemented in PyTorch, using openai.gym.
+Implemented in PyTorch, using openai.gym. Algorithms tested are: [DDPG](https://arxiv.org/abs/1509.02971),  [TD3](https://arxiv.org/abs/1509.02971) and [SAC](https://arxiv.org/abs/1509.02971). The figure below shows the performance of the three.
+
+<img src="figures/comparison.png" alt="Performance of the algorithms learing the elastic net problem" width="400"/>
+
 ## Elastic net regression
 
 <img src="figures/enet_pipeline.png" alt="Elastic net regression agent and environment" width="700"/>
 
-Run ``` main_ddpg.py ``` or ``` main_td3.py ``` to use DDPG or TD3.
+Run ``` main_{ddpg|td3|sac}.py ``` to use DDPG or TD3 or SAC.
 
 Files included are:
 
@@ -20,6 +23,8 @@ Files included are:
 
 ``` enet_ddpg.py ```: DDPG agent
 
+``` enet_sac.py ```: SAC agent
+
 ``` enet_eval.py ```: evaluation
 
 ``` lbfgsnew.py ```: LBFGS optimizer
@@ -27,6 +32,8 @@ Files included are:
 ``` main_ddpg.py ```: run this for DDPG
 
 ``` main_td3.py ```: run this for TD3
+
+``` main_sac.py ```: run this for SAC
 
 ## Calibration
 
@@ -52,8 +59,8 @@ We use influence maps as part of the state representation. An analogy to this is
 
 Note the difference between the trained AlexNet (65% accuracy) and ResNet18 (80% accuracy), the latter has much less bias.
 
-Run ``` main_ddpg.py ``` or ``` main_td3.py ``` to use DDPG or TD3. You can copy some example data from
-[here](https://github.com/nlesc-dirac/sagecal/tree/master/test/Calibration).
+Run ``` main_{ddpg|td3|sac}.py ``` to use DDPG or TD3 or SAC.
+You can copy some example data from [here](https://github.com/nlesc-dirac/sagecal/tree/master/test/Calibration).
 
 Files included are:
 
@@ -69,11 +76,15 @@ Files included are:
 
 ``` calib_ddpg.py ```: DDPG agent
 
+``` calib_sac.py ```: SAC agent
+
 ``` lbfgsnew.py ```: LBFGS optimizer
 
 ``` main_ddpg.py ```: run this for DDPG
 
 ``` main_td3.py ```: run this for TD3
+
+``` main_sac.py ```: run this for SAC
 
 ``` docal.sh ```: shell wrapper to run calibration
 
