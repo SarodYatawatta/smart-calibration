@@ -3,7 +3,7 @@ Using reinforcement learning for hyperparameter tuning in calibration of radio t
 
 RL agent code is based on [this code](https://github.com/philtabor/Youtube-Code-Repository.git).
 
-Implemented in PyTorch, using openai.gym. Algorithms tested are: [DDPG](https://arxiv.org/abs/1509.02971),  [TD3](https://arxiv.org/abs/1509.02971) and [SAC](https://arxiv.org/abs/1509.02971). The figure below shows the performance of the three.
+Implemented in PyTorch, using openai.gym. Algorithms tested are: [DDPG](https://arxiv.org/abs/1509.02971),  [TD3](https://arxiv.org/abs/1802.09477) and [SAC](https://arxiv.org/abs/1801.01290). The figure below shows the performance of the three.
 
 <img src="figures/comparison.png" alt="Performance of the algorithms learing the elastic net problem" width="400"/>
 
@@ -61,6 +61,10 @@ Note the difference between the trained AlexNet (65% accuracy) and ResNet18 (80%
 
 Run ``` main_{ddpg|td3|sac}.py ``` to use DDPG or TD3 or SAC.
 You can copy some example data from [here](https://github.com/nlesc-dirac/sagecal/tree/master/test/Calibration).
+
+The figure below shows small areas in the sky before (left) and after (right) calibration.
+
+<img src="figures/calibration.png" alt="Before and after calibration" width="400"/>
 
 Files included are:
 
