@@ -116,8 +116,9 @@ def analysis_uvwdir_loop(skymodel,clusterfile,uvwfile,rhofile,solutionsfile):
      ts +=T
 ############################# loop over timeslots
 
-    
-    writeuvw('fff',100000*XX,XY,YX,100000*YY)
+    scalefactor=8*(N*(N-1)/2)*T
+    # scale by 8*(N*(N-1)/2)*T
+    writeuvw('fff',scalefactor*XX,XY,YX,scalefactor*YY)
 
 
 
