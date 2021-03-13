@@ -130,6 +130,7 @@ class CriticNetwork(nn.Module):
         x=F.relu(self.bn2(self.conv2(x)))
         x=F.relu(self.bn3(self.conv3(x)))
         x=T.flatten(x,start_dim=1)
+        y=T.flatten(y,start_dim=1) # action
         z=T.flatten(z,start_dim=1) # sky
         y=F.relu(self.fc1(T.cat((y,z),1))) # action, sky
         y=F.relu(self.fc2(y))
