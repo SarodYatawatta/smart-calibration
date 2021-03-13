@@ -2,6 +2,7 @@ import torch as T
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from torch.distributions.normal import Normal
 import numpy as np
 from lbfgsnew import LBFGSNew # custom optimizer
 import pickle # for saving replaymemory
