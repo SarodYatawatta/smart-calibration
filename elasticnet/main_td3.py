@@ -9,7 +9,7 @@ np.random.seed(0)
 
 if __name__ == '__main__':
     N=20 # rows = data points
-    M=20 # columns = parameters, note, N<M, so no unique solution
+    M=20 # columns = parameters, note, if N<M, no unique solution
     env = ENetEnv(M,N)
     # actions: 2
     agent = Agent(gamma=0.99, batch_size=64, n_actions=2, tau=0.005,
@@ -30,7 +30,7 @@ if __name__ == '__main__':
         done = False
         observation = env.reset()
         loop=0
-        while (not done) and loop<2: # limit number of loops as well
+        while (not done) and loop<4: # limit number of loops as well
             action = agent.choose_action(observation)
             observation_, reward, done, info = env.step(action)
             score += reward
