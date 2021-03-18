@@ -25,7 +25,7 @@ Files included are:
 
 ``` enet_sac.py ```: SAC agent
 
-``` enet_eval.py ```: evaluation
+``` enet_eval.py ```: evaluation and compare with sklearn GridSearchCV
 
 ``` lbfgsnew.py ```: LBFGS optimizer
 
