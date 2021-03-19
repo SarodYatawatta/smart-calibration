@@ -74,7 +74,7 @@ if __name__ == '__main__':
     n_games = 2
     
     # load from previous sessions
-    agent.load_models()
+    agent.load_models_for_eval()
 
     # for grid search
     sk=SKEnet(lambda1=0.0001,lambda2=0.0001)
@@ -109,4 +109,4 @@ if __name__ == '__main__':
         x=env.x.detach().cpu().numpy()
         # Grid search solution
         g=np.squeeze(bs.coeff_)
-        print('RL %f GR %f'%(np.linalg.norm(x0-x,1)/M,np.linalg.norm(x0-g,1)/M))
+        print('RL %f GR %f'%(np.linalg.norm(x0-x,1)/np.linalg.norm(x0,1),np.linalg.norm(x0-g,1)/np.linalg.norm(x0,1)))
