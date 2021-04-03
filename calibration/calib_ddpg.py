@@ -365,6 +365,15 @@ class Agent():
         self.critic.train()
         self.target_critic.eval()
 
+    def load_models_for_eval(self):
+        self.actor.load_checkpoint()
+        self.critic.load_checkpoint()
+        self.actor.eval()
+        self.critic.eval()
+
+    def print(self):
+        print(self.actor)
+        print(self.critic)
 
 #a=Agent(gamma=0.99, batch_size=32, n_actions=2, M=4,
 #             max_mem_size=1000, input_dims=[1,128,128], lr_a=0.001, lr_c=0.001)

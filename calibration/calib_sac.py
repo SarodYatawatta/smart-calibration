@@ -455,7 +455,21 @@ class Agent():
         self.critic_2.train()
         self.update_network_parameters(tau=1.)
 
+    def load_models_for_eval(self):
+        self.actor.load_checkpoint()
+        self.value.load_checkpoint()
+        self.critic_1.load_checkpoint()
+        self.critic_2.load_checkpoint()
+        self.actor.eval()
+        self.value.eval()
+        self.critic_1.eval()
+        self.critic_2.eval()
 
-a=Agent(gamma=0.99, batch_size=32, n_actions=2, M=4,
-             max_mem_size=1000, input_dims=[1,128,128], lr_a=0.001, lr_c=0.001)
+    def print(self):
+        print(self.actor)
+        print(self.value)
+        print(self.critic_1)
+
+#a=Agent(gamma=0.99, batch_size=32, n_actions=2, M=4,
+#             max_mem_size=1000, input_dims=[1,128,128], lr_a=0.001, lr_c=0.001)
 

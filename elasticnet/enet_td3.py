@@ -356,6 +356,9 @@ class Agent():
         self.critic_1.eval()
         self.critic_2.eval()
 
+    def print(self):
+        print(self.actor)
+        print(self.critic_1)
 
 #a=Agent(gamma=0.99, batch_size=32, n_actions=2,  
 #                max_mem_size=1000, input_dims=[11], lr_a=0.001, lr_c=0.001)
