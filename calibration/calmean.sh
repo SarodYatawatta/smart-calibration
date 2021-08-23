@@ -2,7 +2,8 @@
 GL="calmean_.py"
 echo "from pyrap.images import image" > $GL;
 echo "import os,math" >> $GL;
-echo "import pyfits" >> $GL;
+#echo "import pyfits" >> $GL;
+echo "import astropy.io.fits as pyfits" >> $GL;
 let "ct = 1";
 
 ## box to calculate variance

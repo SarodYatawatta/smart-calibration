@@ -10,9 +10,9 @@ while [ $ci -le 4 ]; do # -le 8 for all freqs
  elif [ $ci -le 99 ]; then
   MS="L_SB"$ci".MS";
  fi
- python2 ./readcorr.py $MS smalluvw.txt;
+ python ./readcorr.py $MS smalluvw.txt;
  python  ./analysis.py ./sky.txt ./cluster.txt ./smalluvw.txt ./admm_rho.txt $MS.solutions
- python2 ./writecorr.py $MS fff;
+ python ./writecorr.py $MS fff;
  # -x 2 for fullpol
  /home/sarod/work/excon/src/MS/excon -x 0 -m $MS -c CORRECTED_DATA -d 128 -p 20
  let "ci = $ci + 1";
