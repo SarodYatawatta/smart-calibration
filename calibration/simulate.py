@@ -213,8 +213,8 @@ if spatial_term:
   a1=np.random.randn(8*N)
   a2=np.random.randn(8*N)
   a0=a0/np.linalg.norm(a0)
-  a1=a1/np.linalg.norm(a0)
-  a2=a2/np.linalg.norm(a0)
+  a1=a1/np.linalg.norm(a1)
+  a2=a2/np.linalg.norm(a2)
 
 for ck in range(K):
   if not spatial_term:
