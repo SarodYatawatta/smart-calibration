@@ -13,6 +13,10 @@ write_files=1
 # and last one for weak sources (so minimum 2), 3 will be the weak sources
 K=4 # must match what is used in cali_main.py
 
+# enable spatial smoothness of systematic errors
+spatial_term=True # if True, enable spatial smoothness (planes in l,m for each term)
+spalpha=0.99 # in [0,1], ratio of spatial term  (rest will be 1-spalpha)
+
 # MS name to use as filename base 'XX_SB001_MS.solutions'
 # broken to 2 parts
 MS1='L_'
@@ -21,6 +25,7 @@ MS2='.MS'
 
 # stations
 N=62
+#GG N=61
 # baselines
 B=N*(N-1)/2
 
@@ -52,6 +57,9 @@ arh=open(initialrho,'w+')
 ra0=0
 dec0=math.pi/2
 
+if spatial_term:
+ ltot=list()
+ mtot=list()
 
 # number of sources at the center, included in calibration
 Kc=1
@@ -65,6 +73,10 @@ sI=((np.random.rand(Kc)*90)+10)/10
 sI=sI/np.min(sI)*3 # min flux 3 Jy
 # spectral indices
 sP=np.random.randn(Kc)
+
+if spatial_term:
+ ltot.extend(l)
+ mtot.extend(m)
 
 #%%%%%%%%% weak sources
 # weak sources in background
@@ -133,6 +145,9 @@ sI=sI/np.min(sI)*250 # min flux 150 Jy (will be attenuated by the beam)
 # spectral indices
 sP=np.random.randn(Kc)
 
+if spatial_term:
+ ltot.extend(l)
+ mtot.extend(m)
 
 ff.write('# outlier sources (reset flux during calibration)\n')
 ff1.write('# outlier sources (reset flux during calibration)\n')
@@ -184,6 +199,7 @@ gg1.close()
 
 # time slots of solutions, multiply with -t tslot option for full duration
 Ts=6
+#GG Ts=187
 
 # storage for full solutions
 gs=np.zeros((K,8*N*Ts,Nf),dtype=np.float32)
@@ -191,9 +207,21 @@ gs=np.zeros((K,8*N*Ts,Nf),dtype=np.float32)
 # normalize freqency 
 ff=(f-f0)/f0
 
-# randomly generate initial 8*N values, for each direction, for 1st freq
+if spatial_term:
+  # spatial term (a0 l + a1 m + a2) planes in l,m
+  a0=np.random.randn(8*N)
+  a1=np.random.randn(8*N)
+  a2=np.random.randn(8*N)
+  a0=a0/np.linalg.norm(a0)
+  a1=a1/np.linalg.norm(a0)
+  a2=a2/np.linalg.norm(a0)
+
 for ck in range(K):
-  gs[ck,0:8*N,0]=np.random.randn(8*N)
+  if not spatial_term:
+    # randomly generate initial 8*N values, for each direction, for 1st freq
+    gs[ck,0:8*N,0]=np.random.randn(8*N)
+  else:
+    gs[ck,0:8*N,0]=(1-spalpha)*np.random.randn(8*N) + spalpha*(a0*ltot[ck]+a1*mtot[ck]+a2)
   # also add 1 to J_00 and J_22 (real part) : every 0 and 6 value
   gs[ck,0:8*N:8] +=1.
   gs[ck,6:8*N:8] +=1.
