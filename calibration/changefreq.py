@@ -8,9 +8,22 @@ def read_corr(msname,freq):
   import math
   tf=table(msname+'/SPECTRAL_WINDOW',readonly=False)
   ch0=tf.getcol('CHAN_FREQ')
-  ch0[0,0]=freq
+  _,nchan=ch0.shape
   reffreq=tf.getcol('REF_FREQUENCY')
-  reffreq[0]=ch0[0,0]
+  if nchan==1:
+   # single channel
+   ch0[0,0]=freq
+  else:
+   # multi channel
+   # get bandwidth
+   bw=tf.getcol('EFFECTIVE_BW')
+   BW=np.sum(bw)/nchan
+   # lowest freq
+   f0=freq-(nchan-1)*BW/2.0
+   for ch in range(nchan):
+     ch0[0,ch]=f0+ch*bw[0,ch]
+   
+  reffreq[0]=freq
   tf.putcol('CHAN_FREQ',ch0)
   tf.putcol('REF_FREQUENCY',reffreq)
   tf.close()
