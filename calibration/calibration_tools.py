@@ -94,6 +94,7 @@ def readsolutions(filename):
   Ns=int(cl[3]) # stations
   K=int(cl[5]) # true directions
   fullset=fh.readlines()
+  fh.close()
   Nt=len(fullset)
   Nto=Nt//(8*Ns)
   a=np.zeros((Nt,K),dtype=np.float32)
@@ -113,6 +114,58 @@ def readsolutions(filename):
       J[m,2*n+1:2*Ns*Nto:2*Ns,1]=a[8*n+6:Nto*8*Ns:Ns*8,m]+1j*a[8*n+7:Nto*8*Ns:Ns*8,m]
 
   return (freq,J)
+
+
+# read solutions file for spatial model, return solutions Zspat tensor 
+# return N(stations), F(freq poly) theta,phi (polar coordinate of calibration dirs Kx1) and Z
+def read_spatial_solutions(filename):
+  fh=open(filename,'r')
+  # skip first 3 lines
+  next(fh)
+  next(fh)
+  next(fh)
+  # reference_freq/MHz Freqpol(F) Spatialpol(G) N K Ktrue
+  # F, G are number of polynomials in frequency and space
+  curline=next(fh)
+  cl=curline.split()
+  freq=float(cl[0])*1e6
+  F=int(cl[1]) # polynomials in frequency
+  G=int(cl[2]) # polynomials in space (spherical harmonics)
+  Ns=int(cl[3]) # stations
+  K=int(cl[5]) # true directions
+  # spherical harmonic order
+  n0=int(math.sqrt(G))
+  # next two lines, Kx1 values for source coordinates
+  curline=next(fh)
+  cl=curline.split()
+  thetak=[float(x) for x in cl]
+  curline=next(fh)
+  cl=curline.split()
+  phik=[float(x) for x in cl]
+  assert(len(phik)==len(thetak) and len(phik)==K)
+  # the remaining lines will have 1+G columns, first col from 0..8FN-1
+  fullset=fh.readlines()
+  fh.close()
+  Nt=len(fullset)
+  Nto=Nt//(8*F*Ns)
+  a=np.zeros((Nt,G),dtype=np.float32)
+  ci=0
+  for cl in fullset:
+    cl1=cl.split()
+    for cj in range(len(cl1)-1):
+      a[ci,cj]=float(cl1[cj+1])
+    ci +=1
+
+  Z=np.zeros((Nto,2*F*Ns,2*G),dtype=np.csingle)
+  for ci in range(Nto):
+    # split each col of a[] to 4FN x 2, 
+    # each 4FN yields 2FN complex, which is one col of Z
+    for cj in range(G):
+      b=a[(8*F*Ns)*ci:(8*F*Ns)*(ci+1),cj]
+      c=b[0:8*F*Ns:2]+1j*b[1:8*F*Ns:2]
+      Z[ci,:,2*cj]=c[0:2*F*Ns]
+      Z[ci,:,2*cj+1]=c[2*F*Ns:4*F*Ns]
+  return Ns,F,thetak,phik,Z
 
 
 # return K,C
@@ -278,14 +331,15 @@ def Bpoly(x,N):
  return y.transpose()
   
  
-# return F: 2Nx2N
-def consensus_poly(Ne,N,freqs,f0,fidx,polytype=0):
+# return F: 2Nx2N, and P: 2N Ne x 2 N
+def consensus_poly(Ne,N,freqs,f0,fidx,polytype=0,rho=0.0,alpha=0.0):
  # Ne: polynomial order (number of terms)
  # N: stations
  # freqs: Nfx1 freq vector
  # f0: reference freq
  # fidx: 0,1,... frequency index to create F (working frequency)
  # polytype:0 ordinary, 1 Bernstein 
+ # alpha: regularization parameter in federated averaging/spatial constraints
  Nf=len(freqs)
  Bfull=np.zeros((Nf,Ne),dtype=np.float32)
  if (polytype==0):
@@ -301,13 +355,14 @@ def consensus_poly(Ne,N,freqs,f0,fidx,polytype=0):
  for cf in range(Nf):
    Bi=Bi+np.outer(Bfull[cf],Bfull[cf])
 
- Bi=np.linalg.pinv(Bi)
+ # federated averaging/spatial constraing comes in as alpha x I
+ Bi=np.linalg.pinv(Bi+alpha*np.eye(Ne))
  # select correct freq. component
  Bf=np.kron(Bfull[fidx],np.eye(2*N))
  P=np.matmul(np.kron(Bi,np.eye(2*N)),Bf.transpose())
- F=np.eye(2*N)-np.matmul(Bf,P)
+ F=np.eye(2*N)-rho*np.matmul(Bf,P)
 
- return F
+ return F,P
   
 
 
@@ -552,3 +607,4 @@ def Dresiduals_r(C,J,N,dJ,addself):
 #skytocoherencies('sky.txt','cluster.txt','smalluvw.txt',62,150e6,1,1.5)
 #read_rho('admm_rho.txt',2)
 #readuvw('smalluvw.txt')
+#read_spatial_solutions('spatial_zsol')

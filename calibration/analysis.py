@@ -4,9 +4,11 @@ import numpy.matlib
 from calibration_tools import *
 
 
-def analysis_uvwdir_loop(skymodel,clusterfile,uvwfile,rhofile,solutionsfile):
+def analysis_uvwdir_loop(skymodel,clusterfile,uvwfile,rhofile,solutionsfile,alpha):
+    # alpha: spatial constraint regularization parameter
     # stations
     N=62
+    #GG N=61
     # baselines
     B=int(N*(N-1)/2)
     
@@ -39,11 +41,11 @@ def analysis_uvwdir_loop(skymodel,clusterfile,uvwfile,rhofile,solutionsfile):
     # scale rho linearly with sI
     rho=read_rho(rhofile,K)
 
-    
     # read u,v,w,xx(re,im), xy(re,im) yx(re,im) yy(re,im)
     XX,XY,YX,YY=readuvw(uvwfile)
     # how many timeslots to use per calibration (-t option)
     T=10
+    #GG T=5
     Ts=int(XX.shape[0]//(B*T))
 
     # check this agrees with solutions
@@ -55,15 +57,24 @@ def analysis_uvwdir_loop(skymodel,clusterfile,uvwfile,rhofile,solutionsfile):
     
     # which frequency index to work with
     fidx=np.argmin(np.abs(f-freq))
-    # note: F not dependent on rho, because it cancels out
-    F=consensus_poly(Ne,N,f,f0,fidx,polytype=polytype)
-    # example: making F=rand(2N,2N) makes performance worse
     
     # addition to Hessian
     Hadd=np.zeros((K,4*N,4*N),dtype=np.float32)
-    FF=np.matmul(F.transpose(),F)
     for ci in range(K):
-     Hadd[ci]=0.5*rho[ci]*np.kron(np.eye(2),np.matmul(FF,np.eye(2*N)+np.matmul(np.linalg.pinv(np.eye(2*N)-FF),FF)))
+     # note: F is dependent on rho when alpha!=0 
+     # example: making F=rand(2N,2N) makes performance worse
+     F,P=consensus_poly(Ne,N,f,f0,fidx,polytype=polytype,rho=rho[ci],alpha=alpha)
+     FF=np.matmul(F.transpose(),F)
+     if alpha>0.0:
+       PP=np.matmul(P.transpose(),P)
+       H11=0.5*rho[ci]*FF+0.5*alpha*rho[ci]*rho[ci]*PP
+       H12=0.5*FF+0.5*alpha*rho[ci]*PP
+       H21=H12
+       H22=-0.5/rho[ci]*(np.eye(2*N)-FF)+0.5*alpha*PP
+       Htilde=H11-np.matmul(H12,np.matmul(np.linalg.pinv(H22),H21))
+       Hadd[ci]=np.kron(np.eye(2),Htilde)
+     else:
+       Hadd[ci]=0.5*rho[ci]*np.kron(np.eye(2),np.matmul(FF,np.eye(2*N)+np.matmul(np.linalg.pinv(np.eye(2*N)-FF),FF)))
 
 ############################# loop over timeslots
     ts=0
@@ -116,21 +127,21 @@ def analysis_uvwdir_loop(skymodel,clusterfile,uvwfile,rhofile,solutionsfile):
      ts +=T
 ############################# loop over timeslots
 
-    scalefactor=8*(N*(N-1)/2)*T
-    # scale by 8*(N*(N-1)/2)*T
+    scalefactor=8*(N*(N-1)/2)*T 
+    # scale by 8*(N*(N-1)/2)*T    
     writeuvw('fff',scalefactor*XX,XY,YX,scalefactor*YY)
 
 
 
 
 if __name__ == '__main__':
-  # args skymodel clusterfile uvwfile rhofile solutionsfile
+  # args skymodel clusterfile uvwfile rhofile solutionsfile alpha
   import sys
   argc=len(sys.argv)
-  if argc>5:
-   analysis_uvwdir_loop(sys.argv[1],sys.argv[2],sys.argv[3],sys.argv[4],sys.argv[5])
+  if argc>6:
+   analysis_uvwdir_loop(sys.argv[1],sys.argv[2],sys.argv[3],sys.argv[4],sys.argv[5],sys.argv[6])
   else:
-   print("Usage: python %s skymodel clusterfile uvwfile rhofile solutionsfile"%(sys.argv[0]))
+   print("Usage: python %s skymodel clusterfile uvwfile rhofile solutionsfile alpha"%(sys.argv[0]))
 
   exit()
 
