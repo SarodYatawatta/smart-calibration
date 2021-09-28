@@ -139,7 +139,7 @@ if __name__ == '__main__':
   import sys
   argc=len(sys.argv)
   if argc>6:
-   analysis_uvwdir_loop(sys.argv[1],sys.argv[2],sys.argv[3],sys.argv[4],sys.argv[5],sys.argv[6])
+   analysis_uvwdir_loop(sys.argv[1],sys.argv[2],sys.argv[3],sys.argv[4],sys.argv[5],float(sys.argv[6]))
   else:
    print("Usage: python %s skymodel clusterfile uvwfile rhofile solutionsfile alpha"%(sys.argv[0]))
 
