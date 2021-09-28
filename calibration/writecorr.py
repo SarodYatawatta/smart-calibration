@@ -15,6 +15,7 @@ def read_corr(msname,outfilename):
 
   ct=0
   
+  (nchan,_)=vl[0].shape
   for nr in range(0,nrtime):
     if (a1[nr]!=a2[nr]):
       ll=a[ct]
@@ -24,6 +25,10 @@ def read_corr(msname,outfilename):
       vl[nr,0,1]=complex(float(bb[2]),float(bb[3]));
       vl[nr,0,2]=complex(float(bb[4]),float(bb[5]));
       vl[nr,0,3]=complex(float(bb[6]),float(bb[7]));
+      # also fill all other channels with same
+      for ch in range(1,nchan):
+        vl[nr,ch]=vl[nr,0]
+
  
   print(ct)
   print(nr)
