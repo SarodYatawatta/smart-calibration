@@ -2,6 +2,7 @@ import math,sys,uuid
 import numpy as np
 import numpy.matlib
 from multiprocessing import Pool
+from multiprocessing import shared_memory
 from calibration_tools import *
 
 
@@ -52,6 +53,16 @@ def analysis_uvwdir_loop(skymodel,clusterfile,uvwfile,rhofile,solutionsfile,alph
 
     # read u,v,w,xx(re,im), xy(re,im) yx(re,im) yy(re,im)
     XX,XY,YX,YY=readuvw(uvwfile)
+    # create shared memory equal to XX,XY,YX,YY buffers for parallel processing
+    shmXX=shared_memory.SharedMemory(create=True,size=XX.nbytes)
+    shmXY=shared_memory.SharedMemory(create=True,size=XY.nbytes)
+    shmYX=shared_memory.SharedMemory(create=True,size=YX.nbytes)
+    shmYY=shared_memory.SharedMemory(create=True,size=YY.nbytes)
+    # create arrays that can be used in multiprocessing
+    XX0=np.ndarray(XX.shape,dtype=XX.dtype,buffer=shmXX.buf)
+    XY0=np.ndarray(XY.shape,dtype=XY.dtype,buffer=shmXY.buf)
+    YX0=np.ndarray(YX.shape,dtype=YX.dtype,buffer=shmYX.buf)
+    YY0=np.ndarray(YY.shape,dtype=YY.dtype,buffer=shmYY.buf)
     # how many timeslots to use per calibration (-t option)
     T=10
     #GG T=5
@@ -102,10 +113,10 @@ def analysis_uvwdir_loop(skymodel,clusterfile,uvwfile,rhofile,solutionsfile,alph
         H+=Hadd
        
         # set to zero
-        XX[ts*B:ts*B+B*T]=0
-        XY[ts*B:ts*B+B*T]=0
-        YX[ts*B:ts*B+B*T]=0
-        YY[ts*B:ts*B+B*T]=0
+        XX0[ts*B:ts*B+B*T]=0
+        XY0[ts*B:ts*B+B*T]=0
+        YX0[ts*B:ts*B+B*T]=0
+        YY0[ts*B:ts*B+B*T]=0
        
         if loop_in_r:
           for r in range(8):
@@ -116,10 +127,10 @@ def analysis_uvwdir_loop(skymodel,clusterfile,uvwfile,rhofile,solutionsfile,alph
             # find mean value over columns
             dR11=np.mean(dR[0:4*B:4],axis=0)
             dR11=np.squeeze(np.matlib.repmat(dR11,1,T))
-            XX[ts*B:ts*B+B*T] +=dR11
+            XX0[ts*B:ts*B+B*T] +=dR11
             dR11=np.mean(dR[3:4*B:4],axis=0)
             dR11=np.squeeze(np.matlib.repmat(dR11,1,T))
-            YY[ts*B:ts*B+B*T] +=dR11
+            YY0[ts*B:ts*B+B*T] +=dR11
         else:
           # dJ: 8 x K x 4NxB tensor
           dJ=Dsolutions_r(Ct[:,ts*B:ts*B+B*T],J[:,ncal*2*N:ncal*2*N+2*N],N,H)
@@ -129,10 +140,10 @@ def analysis_uvwdir_loop(skymodel,clusterfile,uvwfile,rhofile,solutionsfile,alph
           for r in range(8):
             dR11=np.mean(dR[r,0:4*B:4],axis=0)
             dR11=np.squeeze(np.matlib.repmat(dR11,1,T))
-            XX[ts*B:ts*B+B*T] +=dR11
+            XX0[ts*B:ts*B+B*T] +=dR11
             dR11=np.mean(dR[r,3:4*B:4],axis=0)
             dR11=np.squeeze(np.matlib.repmat(dR11,1,T))
-            YY[ts*B:ts*B+B*T] +=dR11
+            YY0[ts*B:ts*B+B*T] +=dR11
 ############################# end local function
 ############################# loop over timeslots
 
@@ -141,6 +152,21 @@ def analysis_uvwdir_loop(skymodel,clusterfile,uvwfile,rhofile,solutionsfile,alph
     pool.map(process_chunk,range(Ts))
     pool.close()
     pool.join()
+
+    # copy back from shared memory
+    XX[:]=XX0[:]
+    XY[:]=XY0[:]
+    YX[:]=YX0[:]
+    YY[:]=YY0[:]
+    # release shared memory
+    shmXX.close()
+    shmXX.unlink()
+    shmXY.close()
+    shmXY.unlink()
+    shmYX.close()
+    shmYX.unlink()
+    shmYY.close()
+    shmYY.unlink()
 
     scalefactor=8*(N*(N-1)/2)*T 
     # scale by 8*(N*(N-1)/2)*T    
