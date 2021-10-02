@@ -269,7 +269,7 @@ for ct in range(Ts):
        for ck in range(K):
         flist[cf].write(str(gs[ck,ct*8*N+ci,cf])+' ')
        # last column, 1 at 0 and 6, else 0
-       if offset==0 or offset==7:
+       if offset==0 or offset==6:
         flist[cf].write('1\n')
        else:
         flist[cf].write('0\n')
