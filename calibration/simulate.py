@@ -16,6 +16,8 @@ K=4 # must match what is used in cali_main.py
 # enable spatial smoothness of systematic errors
 spatial_term=True # if True, enable spatial smoothness (planes in l,m for each term)
 spalpha=0.99 # in [0,1], ratio of spatial term  (rest will be 1-spalpha)
+# enable diffuse sky model (shapelet mode files SLSI.fits.modes  SLSQ.fits.modes  SLSU.fits.modes) 
+diffuse_sky=False
 
 # MS name to use as filename base 'XX_SB001_MS.solutions'
 # broken to 2 parts
@@ -95,7 +97,7 @@ n0=(np.sqrt(1-np.power(l0,2)-np.power(m0,2))-1)
 # name h m s d m s I Q U V spectral_index1 spectral_index2 spectral_index3 RM extent_X(rad) extent_Y(rad) pos_angle(rad) freq0
 M1=20
 a=0.01
-b=0.5 # flux in [0.01 0.1]
+b=0.5 # flux in [0.01 0.5]
 alpha=-2
 nn=np.random.rand(M1)
 sI1=np.power(np.power(a,(alpha+1))+nn*(np.power(b,(alpha+1))-np.power(a,(alpha+1))),(1/(alpha+1)))
@@ -114,7 +116,7 @@ gg.write('1 1')
 gg1.write('1 1')
 arh.write('# format\n')
 arh.write('# cluster_id hybrid admm_rho\n')
-arh.write('1 1 '+str(sum(sI))+'\n') # total flux x 1
+arh.write('1 1 '+str(sum(sI)*100)+'\n') # total flux x 100
 for cj in range(Kc):
  ra,dec=lmtoradec(l[cj],m[cj],ra0,dec0)
  hh,mm,ss=radToRA(ra)
@@ -165,7 +167,7 @@ for cj in range(Kc):
  gg.write(str(cj+2)+' 1 '+sname+'\n')
  gg1.write(str(cj+2)+' 1 '+sname+'\n')
  skl.write(str(cj+2)+' '+str(l[cj])+' '+str(m[cj])+' '+str(sI[cj]/100)+' '+str(sP[cj])+'\n')
- arh.write(str(cj+2)+' 1 '+str(sI[cj]/1000)+'\n') # total apparent flux x 0.1, because outlier
+ arh.write(str(cj+2)+' 1 '+str(sI[cj]*100/1000)+'\n') # total apparent flux x 0.1 x 100, because outlier
 skl.close()
 arh.close()
 # weak sources are grouped into one cluster
@@ -189,6 +191,20 @@ for cj in range(M1):
  ff.write(sname+' '+str(hh)+' '+str(mm)+' '+str(int(ss))+' '+str(dd)+' '+str(dmm)+' '+str(int(dss))+' '+str(sI1[cj])+' 0 0 0 0 0 0 0 '+str(eX[cj])+' '+str(eY[cj])+' '+str(eP[cj])+' '+str(f0)+'\n')
  gg.write(str(sname)+' ')
 
+if diffuse_sky:
+  #shapelet models
+  hh,mm,ss=radToRA(ra)
+  dd,dmm,dss=radToDec(dec)
+  sname='SLSI'
+  ff.write(sname+' '+str(hh)+' '+str(mm)+' '+str(int(ss))+' '+str(dd)+' '+str(dmm)+' '+str(int(dss))+' 5.0 0 0 0 -0.100000 0.000000 0.000000 0.0 1.0 1.0 0.0 '+str(f0)+'\n')
+  gg.write(str(sname)+' ')
+  sname='SLSQ'
+  ff.write(sname+' '+str(hh)+' '+str(mm)+' '+str(int(ss))+' '+str(dd)+' '+str(dmm)+' '+str(int(dss))+' 0.0 5.0 0 0 -0.100000 0.000000 0.000000 0.0 1.0 1.0 0.0 '+str(f0)+'\n')
+  gg.write(str(sname)+' ')
+  sname='SLSU'
+  ff.write(sname+' '+str(hh)+' '+str(mm)+' '+str(int(ss))+' '+str(dd)+' '+str(dmm)+' '+str(int(dss))+' 0.0 0.0 5.0 0 -0.100000 0.000000 0.000000 0.0 1.0 1.0 0.0 '+str(f0)+'\n')
+  gg.write(str(sname)+' ')
+  
 gg.write('\n')
 
 ff.close()
@@ -221,7 +237,10 @@ for ck in range(K):
     # randomly generate initial 8*N values, for each direction, for 1st freq
     gs[ck,0:8*N,0]=np.random.randn(8*N)
   else:
-    gs[ck,0:8*N,0]=(1-spalpha)*np.random.randn(8*N) + spalpha*(a0*ltot[ck]+a1*mtot[ck]+a2)
+    randpart=np.random.randn(8*N)
+    gs[ck,0:8*N,0]=(1-spalpha)*randpart/np.linalg.norm(randpart) + spalpha*(a0*ltot[ck]+a1*mtot[ck]+a2)
+    gs[ck,0:8*N,0] /= np.linalg.norm(gs[ck,0:8*N,0])
+
   # also add 1 to J_00 and J_22 (real part) : every 0 and 6 value
   gs[ck,0:8*N:8] +=1.
   gs[ck,6:8*N:8] +=1.
