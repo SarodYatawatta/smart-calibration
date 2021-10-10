@@ -193,8 +193,8 @@ for cj in range(M1):
 
 if diffuse_sky:
   #shapelet models
-  hh,mm,ss=radToRA(ra)
-  dd,dmm,dss=radToDec(dec)
+  hh,mm,ss=radToRA(ra0)
+  dd,dmm,dss=radToDec(dec0)
   sname='SLSI'
   ff.write(sname+' '+str(hh)+' '+str(mm)+' '+str(int(ss))+' '+str(dd)+' '+str(dmm)+' '+str(int(dss))+' 5.0 0 0 0 -0.100000 0.000000 0.000000 0.0 1.0 1.0 0.0 '+str(f0)+'\n')
   gg.write(str(sname)+' ')
