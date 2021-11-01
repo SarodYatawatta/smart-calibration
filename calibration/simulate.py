@@ -15,9 +15,9 @@ K=4 # must match what is used in cali_main.py
 
 # enable spatial smoothness of systematic errors
 spatial_term=True # if True, enable spatial smoothness (planes in l,m for each term)
-spalpha=0.99 # in [0,1], ratio of spatial term  (rest will be 1-spalpha)
-# enable diffuse sky model (shapelet mode files SLSI.fits.modes  SLSQ.fits.modes  SLSU.fits.modes) 
-diffuse_sky=False
+spalpha=0.95 # in [0,1], ratio of spatial term  (rest will be 1-spalpha)
+# enable diffuse sky model (shapelet mode files SLSI.fits.modes  SLSQ.fits.modes  SLSU.fits.modes)
+diffuse_sky=True
 
 # MS name to use as filename base 'XX_SB001_MS.solutions'
 # broken to 2 parts
@@ -28,6 +28,7 @@ MS2='.MS'
 # stations
 N=62
 #GG N=61
+#GG N=62
 # baselines
 B=N*(N-1)/2
 
@@ -47,6 +48,10 @@ outskymodel1='sky.txt' # for calibration
 outcluster='cluster0.txt' # for simulation
 outcluster1='cluster.txt' # for calibration
 skycluster='skylmn.txt' # for input to DQN
+bbsskymodel='sky_bbs.txt' # input to DP3
+bbsparset_dem='test_demix.parset' # DP3 parset (demixing)
+bbsparset_dde='test_ddecal.parset' # DP3 parset (ddelcal)
+bbsparset_pred='test_predict.parset' # DP3 parset (predict)
 initialrho='admm_rho0.txt' # initial values for rho, determined analytically
 ff=open(outskymodel,'w+')
 ff1=open(outskymodel1,'w+')
@@ -54,6 +59,10 @@ gg=open(outcluster,'w+')
 gg1=open(outcluster1,'w+')
 skl=open(skycluster,'w+')
 arh=open(initialrho,'w+')
+bbs=open(bbsskymodel,'w+')
+bbsdem=open(bbsparset_dem,'w+')
+bbsdde=open(bbsparset_dde,'w+')
+bbspre=open(bbsparset_pred,'w+')
 
 # phase center
 ra0=0
@@ -64,15 +73,15 @@ if spatial_term:
  mtot=list()
 
 # number of sources at the center, included in calibration
-Kc=1
+Kc=40
 # generate random sources in [-lmin,lmax] at the phase center
-lmin=0.1
+lmin=0.01
 l=(np.random.rand(Kc)-0.5)*lmin
 m=(np.random.rand(Kc)-0.5)*lmin
 n=(np.sqrt(1-np.power(l,2)-np.power(m,2))-1)
 # intensities, uniform in [10,100]/10 : ~=10, so that rho matches
 sI=((np.random.rand(Kc)*90)+10)/10
-sI=sI/np.min(sI)*3 # min flux 3 Jy
+sI=sI/np.min(sI)*0.03 # min flux 0.03 Jy
 # spectral indices
 sP=np.random.randn(Kc)
 
@@ -82,9 +91,9 @@ if spatial_term:
 
 #%%%%%%%%% weak sources
 # weak sources in background
-M=150
+M=350
 a=0.01
-b=0.1#  flux in [0.01 0.1]
+b=0.5#  flux in [0.01 0.5]
 alpha=-2
 nn=np.random.rand(M)
 sII=np.power(np.power(a,(alpha+1))+nn*(np.power(b,(alpha+1))-np.power(a,(alpha+1))),(1/(alpha+1)))
@@ -95,7 +104,7 @@ n0=(np.sqrt(1-np.power(l0,2)-np.power(m0,2))-1)
 
 # extended sources
 # name h m s d m s I Q U V spectral_index1 spectral_index2 spectral_index3 RM extent_X(rad) extent_Y(rad) pos_angle(rad) freq0
-M1=20
+M1=120
 a=0.01
 b=0.5 # flux in [0.01 0.5]
 alpha=-2
@@ -113,10 +122,47 @@ eP=(np.random.rand(M1)-0.5)*180*math.pi/180
 # output sources for centre cluster
 # format: P0 19 59 47.0 40 40 44.0 1.0 0 0 0 -1 0 0 0 0 0 0 1000000.0
 gg.write('1 1')
-gg1.write('1 1')
+gg1.write('-1 1') # do not subtract
 arh.write('# format\n')
 arh.write('# cluster_id hybrid admm_rho\n')
 arh.write('1 1 '+str(sum(sI)*100)+'\n') # total flux x 100
+
+# BBS sky model
+bbs.write('# (Name, Type, Patch, Ra, Dec, I, Q, U, V, ReferenceFrequency=\''+str(f0)+'\', SpectralIndex=\'[]\', MajorAxis, MinorAxis, Orientation) = format\n')
+# Demix parset
+bbsdem.write('steps=[demix]\n'
+  +'demix.type=demixer\n'
+  +'demix.blrange=[60,100000]\n'
+  +'demix.demixtimestep=10\n')
+
+# DDECal parset
+bbsdde.write('steps=[ddecal]\n'
+  +'ddecal.type=ddecal\n'
+  +'ddecal.h5parm=./solutions.h5\n'
+  +'ddecal.sourcedb=./sky\n'
+  +'ddecal.mode=fulljones\n'
+  +'ddecal.uvlambdamin=30\n'
+  +'ddecal.usebeammodel=true\n'
+  +'ddecal.solint=10\n')
+
+bbspre.write('steps=[predict]\n'
+  +'predict.type=h5parmpredict\n'
+  +'predict.sourcedb=./sky\n'
+  +'predict.usebeammodel=true\n'
+  +'predict.onebeamperpatch=false\n'
+  +'predict.applycal.correction=fulljones\n'
+  +'predict.applycal.parmdb=./solutions.h5\n'
+  +'predict.applycal.steps=[applycal_amp, applycal_phase]\n'
+  +'predict.applycal.applycal_amp.correction=amplitude000\n'
+  +'predict.applycal.applycal_phase.correction=phase000\n'
+  +'predict.operation=subtract\n')
+
+hh,mm,ss=radToRA(ra0)
+dd,dmm,dss=radToDec(dec0)
+centername="CENTER"
+bbsdem.write('demix.targetsource=\"'+centername+'\"\n')
+bbs.write(', ,'+centername+','+str(hh)+':'+str(mm)+':'+str(int(ss))+','
+  +str(dd)+'.'+str(dmm)+'.'+str(int(dss))+'\n')
 for cj in range(Kc):
  ra,dec=lmtoradec(l[cj],m[cj],ra0,dec0)
  hh,mm,ss=radToRA(ra)
@@ -128,12 +174,21 @@ for cj in range(Kc):
  gg1.write(' '+sname)
  # output for DQN : formate cluster_id, l, m, sI, sP
  skl.write('1 '+str(l[cj])+' '+str(m[cj])+' '+str(sI[cj])+' '+str(sP[cj])+'\n')
+ # BBS
+ #, , CygA, 19:59:26, +40.44.00
+ #CygA_4_2, POINT,    CygA, 19:59:30.433, +40.43.56.221, 4.827e+03, 0.0, 0.0, 0.0, 7.38000e+07, [-0.8], 7.63889e-03, 6.94444e-03, 1.00637e+02
+ bbs.write(sname+',POINT,'+centername+','+str(hh)+':'+str(mm)+':'+str(int(ss))+','
+        +str(dd)+'.'+str(dmm)+'.'+str(int(dss))+','
+        +str(sI[cj])+', 0, 0, 0,'+str(f0)+',['+str(sP[cj])+'], 0, 0, 0'+'\n')
 
 gg.write('\n')
 gg1.write('\n')
 
 
 
+bbsdem.write('demix.subtractsources=[')
+bbsdde.write('ddecal.directions=[')
+bbspre.write('predict.directions=[')
 # output sources for outlier clusters (one source per cluster)
 Kc=K-1
 # generate random sources in [-lmin,lmax] at the phase center
@@ -156,6 +211,7 @@ ff1.write('# outlier sources (reset flux during calibration)\n')
 gg.write('# clusters for outlier sources\n')
 gg1.write('# clusters for outlier sources\n')
 
+firstcomma=False
 for cj in range(Kc):
  ra,dec=lmtoradec(l[cj],m[cj],ra0,dec0)
  hh,mm,ss=radToRA(ra)
@@ -167,7 +223,31 @@ for cj in range(Kc):
  gg.write(str(cj+2)+' 1 '+sname+'\n')
  gg1.write(str(cj+2)+' 1 '+sname+'\n')
  skl.write(str(cj+2)+' '+str(l[cj])+' '+str(m[cj])+' '+str(sI[cj]/100)+' '+str(sP[cj])+'\n')
- arh.write(str(cj+2)+' 1 '+str(sI[cj]*100/1000)+'\n') # total apparent flux x 0.1 x 100, because outlier
+ arh.write(str(cj+2)+' 1 '+str(sI[cj]/1000*100)+'\n') # total apparent flux x 0.1, because outlier
+ bbs.write(', ,'+sname+','+str(hh)+':'+str(mm)+':'+str(int(ss))+','
+         +str(dd)+'.'+str(dmm)+'.'+str(int(dss))+'\n')
+ bbs.write(sname+'_1,POINT,'+sname+','+str(hh)+':'+str(mm)+':'+str(int(ss))+','
+        +str(dd)+'.'+str(dmm)+'.'+str(int(dss))+','
+        +str(sI[cj]/1000*100)+', 0, 0, 0,'+str(f0)+',['+str(sP[cj])+'], 0, 0, 0'+'\n')
+ if not firstcomma:
+   firstcomma=True
+ else:
+   bbsdem.write(',')
+   bbsdde.write(',')
+   bbspre.write(',')
+ bbsdem.write('\"'+sname+'\"')
+ bbsdde.write('\"'+sname+'\"')
+ bbspre.write('['+sname+']')
+
+
+bbsdem.write(']\n')
+bbsdde.write(',\"'+centername+'\"]\n')
+bbspre.write(']\n')
+bbs.close()
+bbsdem.close()
+bbsdde.close()
+bbspre.close()
+
 skl.close()
 arh.close()
 # weak sources are grouped into one cluster
@@ -192,19 +272,19 @@ for cj in range(M1):
  gg.write(str(sname)+' ')
 
 if diffuse_sky:
-  #shapelet models
+  # shapelet models
   hh,mm,ss=radToRA(ra0)
   dd,dmm,dss=radToDec(dec0)
   sname='SLSI'
-  ff.write(sname+' '+str(hh)+' '+str(mm)+' '+str(int(ss))+' '+str(dd)+' '+str(dmm)+' '+str(int(dss))+' 5.0 0 0 0 -0.100000 0.000000 0.000000 0.0 1.0 1.0 0.0 '+str(f0)+'\n')
+  ff.write(sname+' '+str(hh)+' '+str(mm)+' '+str(int(ss))+' '+str(dd)+' '+str(dmm)+' '+str(int(dss))+' 25.0 0 0 0 -0.100000 0.000000 0.000000 0.0 1.0 1.0 0.0 '+str(f0)+'\n')
   gg.write(str(sname)+' ')
   sname='SLSQ'
-  ff.write(sname+' '+str(hh)+' '+str(mm)+' '+str(int(ss))+' '+str(dd)+' '+str(dmm)+' '+str(int(dss))+' 0.0 5.0 0 0 -0.100000 0.000000 0.000000 0.0 1.0 1.0 0.0 '+str(f0)+'\n')
+  ff.write(sname+' '+str(hh)+' '+str(mm)+' '+str(int(ss))+' '+str(dd)+' '+str(dmm)+' '+str(int(dss))+' 0.0 25.0 0 0 -0.100000 0.000000 0.000000 0.0 1.0 1.0 0.0 '+str(f0)+'\n')
   gg.write(str(sname)+' ')
   sname='SLSU'
-  ff.write(sname+' '+str(hh)+' '+str(mm)+' '+str(int(ss))+' '+str(dd)+' '+str(dmm)+' '+str(int(dss))+' 0.0 0.0 5.0 0 -0.100000 0.000000 0.000000 0.0 1.0 1.0 0.0 '+str(f0)+'\n')
+  ff.write(sname+' '+str(hh)+' '+str(mm)+' '+str(int(ss))+' '+str(dd)+' '+str(dmm)+' '+str(int(dss))+' 0.0 0.0 25.0 0 -0.100000 0.000000 0.000000 0.0 1.0 1.0 0.0 '+str(f0)+'\n')
   gg.write(str(sname)+' ')
-  
+
 gg.write('\n')
 
 ff.close()
@@ -216,6 +296,7 @@ gg1.close()
 # time slots of solutions, multiply with -t tslot option for full duration
 Ts=6
 #GG Ts=187
+#Ts=486
 
 # storage for full solutions
 gs=np.zeros((K,8*N*Ts,Nf),dtype=np.float32)
@@ -240,7 +321,6 @@ for ck in range(K):
     randpart=np.random.randn(8*N)
     gs[ck,0:8*N,0]=(1-spalpha)*randpart/np.linalg.norm(randpart) + spalpha*(a0*ltot[ck]+a1*mtot[ck]+a2)
     gs[ck,0:8*N,0] /= np.linalg.norm(gs[ck,0:8*N,0])
-
   # also add 1 to J_00 and J_22 (real part) : every 0 and 6 value
   gs[ck,0:8*N:8] +=1.
   gs[ck,6:8*N:8] +=1.
@@ -263,7 +343,9 @@ timerange=np.arange(0,Ts)/Ts
 for ck in range(K):
   for cn in range(8*N):
      beta=np.random.randn(4)
-     timepol=beta[0]+beta[1]*np.cos(timerange*beta[2]+beta[3])
+     beta=beta/np.linalg.norm(beta)
+     # add DC term to time poly
+     timepol=1+beta[0]+beta[1]*np.cos(timerange*beta[2]+beta[3])
      for cf in range(Nf):
        gs[ck,cn:8*N*Ts:8*N,cf] *=timepol
 
