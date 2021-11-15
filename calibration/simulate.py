@@ -122,10 +122,10 @@ eP=(np.random.rand(M1)-0.5)*180*math.pi/180
 # output sources for centre cluster
 # format: P0 19 59 47.0 40 40 44.0 1.0 0 0 0 -1 0 0 0 0 0 0 1000000.0
 gg.write('1 1')
-gg1.write('-1 1') # do not subtract
+gg1.write('-1 1') # do not subtract, so -ve cluster id
 arh.write('# format\n')
 arh.write('# cluster_id hybrid admm_rho\n')
-arh.write('1 1 '+str(sum(sI)*100)+'\n') # total flux x 100
+arh.write('-1 1 '+str(sum(sI)*100)+'\n') # total flux x 100
 
 # BBS sky model
 bbs.write('# (Name, Type, Patch, Ra, Dec, I, Q, U, V, ReferenceFrequency=\''+str(f0)+'\', SpectralIndex=\'[]\', MajorAxis, MinorAxis, Orientation) = format\n')
