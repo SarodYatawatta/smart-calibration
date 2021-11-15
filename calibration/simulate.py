@@ -133,7 +133,10 @@ bbs.write('# (Name, Type, Patch, Ra, Dec, I, Q, U, V, ReferenceFrequency=\''+str
 bbsdem.write('steps=[demix]\n'
   +'demix.type=demixer\n'
   +'demix.blrange=[60,100000]\n'
-  +'demix.demixtimestep=10\n')
+  +'demix.demixtimestep=10\n'
+  +'demix.uselbfgssolver=true\n'
+  +'demix.lbfgs.historysize=10\n'
+  +'demix.lbfgs.robustdof=2\n')
 
 # DDECal parset
 bbsdde.write('steps=[ddecal]\n'
