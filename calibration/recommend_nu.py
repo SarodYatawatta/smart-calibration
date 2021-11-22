@@ -5,6 +5,8 @@ import string
 
 
 def read_corr(msname):
+  # window size to sample
+  WINDOW=100
   tt=pt.table(msname,readonly=True)
   w=tt.getcol('WEIGHT_SPECTRUM')
   d=tt.getcol('DATA')
@@ -14,7 +16,6 @@ def read_corr(msname):
   nsample=np.random.randint(0,nrows)
   # random channel
   chan=np.random.randint(0,nchan)
-  WINDOW=10
   nlow=max((0,nsample-WINDOW//2))
   nhigh=min((nrows-1,nsample+WINDOW//2))
   # form Stokes V
