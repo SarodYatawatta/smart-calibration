@@ -129,9 +129,9 @@ class ENetEnv(gym.Env):
     B=torch.matmul(jac,mm).to('cpu')
     #print(B)
     # eigenvalues
-    E,_=torch.eig(B)
+    E,_=torch.linalg.eig(B)
     # 1+eigenvalues (only real part), sorted in ascending order
-    EE=E[:,0]+1
+    EE=E.real+1
     # remember this for rendering later
     self.x=x
 
