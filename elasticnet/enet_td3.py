@@ -74,7 +74,6 @@ class ReplayBuffer(object):
 def is_power_of_2 (n):
     return ((n & (n - 1)) == 0) and n != 0
 
-
 # A binary tree data structure where the parent’s value is the sum of its children
 class SumTree():
     #"""
@@ -559,7 +558,7 @@ class Agent():
           q1=self.critic_1.forward(state_batch,action_batch)
           errors1=T.abs(q1-target).detach().cpu().numpy()
           q2=self.critic_2.forward(state_batch,action_batch)
-          errors2=T.abs(q1-target).detach().cpu().numpy()
+          errors2=T.abs(q2-target).detach().cpu().numpy()
           self.replaymem.batch_update(idxs,0.5*(errors1+errors2))
 
         self.critic_1.train()

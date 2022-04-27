@@ -12,9 +12,10 @@ if __name__ == '__main__':
     M=20 # columns = parameters, note, if N<M, no unique solution
     env = ENetEnv(M,N)
     # actions: 2
+    # prioritized=True for prioritized experience replay memory
     agent = Agent(gamma=0.99, batch_size=64, n_actions=2, tau=0.005,
-                  max_mem_size=1000, input_dims=[N+N*M], lr_a=1e-3, lr_c=1e-3,
-                 reward_scale=N)
+                  max_mem_size=1024, input_dims=[N+N*M], lr_a=1e-3, lr_c=1e-3,
+                 reward_scale=N, prioritized=True)
     # note: input dims: N eigenvalues+ N*M size of design matrix, 
     # lr_a: learning rate actor, lr_c:learning rate critic
     scores=[]

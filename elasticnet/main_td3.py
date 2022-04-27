@@ -15,7 +15,7 @@ if __name__ == '__main__':
     # prioritized=True for prioritized experience replay memory
     agent = Agent(gamma=0.99, batch_size=64, n_actions=2, tau=0.005,
                   max_mem_size=1024, input_dims=[N+N*M], lr_a=1e-3, lr_c=1e-3,
-                 update_actor_interval=2, warmup=100, noise=0.1, prioritized=False)
+                 update_actor_interval=2, warmup=100, noise=0.1, prioritized=True)
     # note: input dims: N eigenvalues+ N*M size of design matrix, 
     # lr_a: learning rate actor, lr_c:learning rate critic
     scores=[]
