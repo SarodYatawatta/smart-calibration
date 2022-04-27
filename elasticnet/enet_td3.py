@@ -558,7 +558,9 @@ class Agent():
         if self.prioritized:
           q1=self.critic_1.forward(state_batch,action_batch)
           errors1=T.abs(q1-target).detach().cpu().numpy()
-          self.replaymem.batch_update(idxs,errors1)
+          q2=self.critic_2.forward(state_batch,action_batch)
+          errors2=T.abs(q1-target).detach().cpu().numpy()
+          self.replaymem.batch_update(idxs,0.5*(errors1+errors2))
 
         self.critic_1.train()
         self.critic_2.train()
