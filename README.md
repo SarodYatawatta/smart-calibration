@@ -1,7 +1,7 @@
 # Smart Calibration
 Using reinforcement learning for hyperparameter tuning in calibration of radio telescopes, and in other data processing pipelines (like elastic net regression). Code to accompany the paper [Deep reinforcement learning for smart calibration of radio telescopes](https://academic.oup.com/mnras/advance-article-abstract/doi/10.1093/mnras/stab1401/6276731) [(preprint)](https://arxiv.org/abs/2102.03200).
 
-RL agent code is based on [this code](https://github.com/philtabor/Youtube-Code-Repository.git).
+RL agent code is based on [this code](https://github.com/philtabor/Youtube-Code-Repository.git). Prioritized experience replay memory code is based on [this code](https://github.com/Ullar-Kask/TD3-PER).
 
 Implemented in PyTorch, using openai.gym. Algorithms tested are: [DDPG](https://arxiv.org/abs/1509.02971),  [TD3](https://arxiv.org/abs/1802.09477) and [SAC](https://arxiv.org/abs/1801.01290). The figure below shows the performance of the three.
 
@@ -11,7 +11,7 @@ Implemented in PyTorch, using openai.gym. Algorithms tested are: [DDPG](https://
 
 <img src="figures/enet_pipeline.png" alt="Elastic net regression agent and environment" width="700"/>
 
-Run ``` main_{ddpg|td3|sac}.py ``` to use DDPG or TD3 or SAC.
+Run ``` main_{ddpg|td3|sac}.py ``` to use DDPG or TD3 or SAC. Prioritized experience replay can be enabled by using the flag ```prioritized=True```.
 
 Files included are:
 
