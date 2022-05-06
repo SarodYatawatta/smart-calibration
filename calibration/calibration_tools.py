@@ -193,9 +193,9 @@ def skytocoherencies(skymodel,clusterfile,uvwfile,N,freq,ra0,dec0):
    ww[ci]=float(cl1[2])
    ci +=1
 
-  uu *=math.pi/c*freq
-  vv *=math.pi/c*freq
-  ww *=math.pi/c*freq
+  uu *=2.0*math.pi/c*freq
+  vv *=2.0*math.pi/c*freq
+  ww *=2.0*math.pi/c*freq
   del fullset
 
   fh=open(skymodel,'r')
@@ -251,6 +251,102 @@ def skytocoherencies(skymodel,clusterfile,uvwfile,N,freq,ra0,dec0):
 
   return K,C
   
+# return K,C
+def skytocoherencies_uvw(skymodel,clusterfile,uu,vv,ww,N,freq,ra0,dec0):
+# use skymodel,clusterfile and predict coherencies for uvwfile coordinates
+# C: K way tensor, each slice Tx4, T: total samples, 4: XX,XY(=0),YX(=0),YY
+# N : stations, ra0,dec0: phase center (rad), freq: frequency
+  # light speed
+  c=2.99792458e8
+  
+  uu *=2.0*math.pi/c*freq
+  vv *=2.0*math.pi/c*freq
+  ww *=2.0*math.pi/c*freq
+
+  # bandwidth for smear factor
+  fdelta=180e3/freq
+
+  # total number of samples
+  T=len(uu)
+  fh=open(skymodel,'r')
+  fullset=fh.readlines()
+  fh.close()
+  S={}
+  for cl in fullset:
+   if (not cl.startswith('#')) and len(cl)>1:
+     cl1=cl.split()
+     S[cl1[0]]=cl1[1:]
+
+  fh=open(clusterfile,'r')
+  fullset=fh.readlines()
+  fh.close()
+  
+  # determine number of clusters
+  ci=0
+  for cl in fullset:
+   if (not cl.startswith('#')) and len(cl)>1:
+     ci +=1
+  K=ci
+  # coherencies: K clusters, T rows, 4=XX,XY,YX,YY
+  C=np.zeros((K,T,4),dtype=np.csingle)
+
+  # output sky/cluster info for input to DQN
+  # format of each line: cluster_id l m sI sP
+  #fh=open('./skylmn.txt','w+')
+  ck=0 # cluster id
+  for cl in fullset:
+   if (not cl.startswith('#')) and len(cl)>1:
+     cl1=cl.split()
+     for sname in cl1[2:]:
+       # 3:ra 3:dec sI 0 0 0 sP 0 0 0 0 0 0 freq0
+       sinfo=S[sname]
+       # parse first char to see if this is a GAUSSIAN
+       gaussian_src=False
+       if sname[0]=='G':
+           gaussian_src=True
+       mra=(float(sinfo[0])+float(sinfo[1])/60.+float(sinfo[2])/3600.)*360./24.*math.pi/180.0
+       mdec=(float(sinfo[3])+float(sinfo[4])/60.+float(sinfo[5])/3600.)*math.pi/180.0
+       (myll,mymm,mynn)=radectolm(mra,mdec,ra0,dec0)
+       mysI=float(sinfo[6])
+       f0=float(sinfo[17])
+       fratio=math.log(freq/f0)
+       sIo=math.exp(math.log(mysI)+float(sinfo[10])*fratio+float(sinfo[11])*math.pow(fratio,2)+float(sinfo[12])*math.pow(fratio,3))
+       uvw=(uu*myll+vv*mymm+ww*mynn)
+       # smear factor, use normalization for numpy sinc() version
+       smearfactor=np.abs(np.sinc(uvw*0.5*fdelta/np.pi))
+       # add to C
+       if gaussian_src:
+         # projection parameters
+         phi=-math.acos(mynn)
+         xi=-math.atan2(-myll,mymm)
+         cxi=math.cos(xi)
+         sxi=math.sin(xi)
+         cphi=math.cos(phi)
+         sphi=math.sin(phi)
+         eP=float(sinfo[16])
+         eX=2*float(sinfo[14])
+         eY=2*float(sinfo[15])
+         uup=uu*cxi-vv*cphi*sxi+ww*sphi*sxi
+         vvp=uu*sxi+vv*cphi*cxi-ww*sphi*cxi
+         cpa=math.cos(eP)
+         spa=math.sin(eP)
+         uut=eX*(cpa*uup-spa*vvp)
+         vvt=eY*(spa*uup+cpa*vvp)
+         scalefac=0.5*math.pi*np.exp(-(uut*uut+vvt*vvt))
+         XX=(np.cos(uvw)+1j*np.sin(uvw))*sIo*scalefac*smearfactor
+       else:
+         XX=(np.cos(uvw)+1j*np.sin(uvw))*sIo*smearfactor
+       C[ck,:,0]=C[ck,:,0]+XX
+       #fh.write(str(ck)+' '+str(myll)+' '+str(mymm)+' '+str(mysI)+' '+str(sinfo[10])+'\n')
+     ck+=1
+  #fh.close()
+
+  # copy to YY 
+  for ck in range(K):
+    C[ck,:,3]=C[ck,:,0]
+
+  return K,C
+
 
 # return rho Kx1 vector
 def read_rho(rhofile,K):
@@ -550,6 +646,53 @@ def Dresiduals(C,J,N,dJ,addself,r):
 
   return dR/(B*T)
 
+# dR: K x 4B x B (for all K)
+def Dresiduals_k(C,J,N,dJ,addself,r):
+# B: baselines=N(N-1)/2
+# T: timeslots for this interval
+# BT: BxT
+# C: KxB*Tx4 - coherencies for this interval
+# J: Kx2Nx2 - valid solution for this interval
+# dJ: Kx4Nx4B
+# to find vec(\partial V_pq / \partial x_pp,qq) - vec(\partial (eq 24)_pq / \partial x_pp,qq), select rows 4*(p-1)+1:4p from dSol
+# note: dJ : K x 4N x N(N-1)/2 for all possible pp,qq combinations
+# dR: 4B x B, rows for all possible p,q and columns for all possible pp,qq (averaged over all time slots)
+# p,q: B rows (4 times) : 4B rows,
+# columns : B for all possible pp,qq values
+# note: r 1,2...8 : determine which element of 2x2 matrix (\partialV_pq/\partial x_pp,qq) is 1
+# r should be the same value used to find dSol
+# addself: if 1, add (\partialV_pq/\partial x_pp,qq) to the block diagonal
+  B=N*(N-1)//2
+  T=C.shape[1]//B
+  K=C.shape[0]
+
+  dR=np.zeros((K,4*B,B),dtype=np.csingle)
+  # setup 4x1 vector, one goes to depending on r
+  rr=np.zeros(8,dtype=np.float32)
+  rr[r]=1.
+  dVpq=rr[0:8:2]+1j*rr[1:8:2]
+  for k in range(K):
+    # ck will fill each column
+    ck=0
+    for cn in range(T):
+      for p in range(N-1):
+         for q in range(p+1,N):
+            # fill up ck-th block of 4 rows in dR
+            # left hand side -(C J_q^H)^T , right hand side I
+            Ci=C[k,ck,:].reshape((2,2),order='F')
+            lhs=-np.matmul(Ci,np.conj(J[k,2*q:2*(q+1),:].transpose())).transpose()
+            # kron product will fill only rows 4*(p-1)+1:4*p, column ck of dJ
+            rhs=dJ[k,4*p:4*(p+1),:]
+            fillvex=np.matmul(np.kron(lhs,np.eye(2)),rhs)
+            ck1=ck%B
+            if addself:
+              fillvex[:,ck1] +=dVpq
+
+            dR[k,4*ck1:4*(ck1+1),:] +=fillvex
+            ck +=1
+
+  return dR/(B*T)
+
 
 # dR: 8 x 4B x B (sum up all K) (for all possible r values)
 def Dresiduals_r(C,J,N,dJ,addself):
@@ -596,6 +739,55 @@ def Dresiduals_r(C,J,N,dJ,addself):
                 fillvex[:,ck1] +=dVpq
 
               dR[r,4*ck1:4*(ck1+1),:] +=fillvex
+            ck +=1
+
+  return dR/(B*T)
+
+# dR: 8 x K x 4B x B (for all possible r values and K)
+def Dresiduals_rk(C,J,N,dJ,addself):
+# B: baselines=N(N-1)/2
+# T: timeslots for this interval
+# BT: BxT
+# C: KxB*Tx4 - coherencies for this interval
+# J: Kx2Nx2 - valid solution for this interval
+# dJ: 8 x Kx4Nx4B (for all possible r)
+# to find vec(\partial V_pq / \partial x_pp,qq) - vec(\partial (eq 24)_pq / \partial x_pp,qq), select rows 4*(p-1)+1:4p from dSol
+# note: dJ : K x 4N x N(N-1)/2 for all possible pp,qq combinations
+# dR: 4B x B, rows for all possible p,q and columns for all possible pp,qq (averaged over all time slots)
+# p,q: B rows (4 times) : 4B rows,
+# columns : B for all possible pp,qq values
+# note: loop over r 1,2...8 : determine which element of 2x2 matrix (\partialV_pq/\partial x_pp,qq) is 1
+# r should be the same value used to find dSol
+# addself: if 1, add (\partialV_pq/\partial x_pp,qq) to the block diagonal
+  B=N*(N-1)//2
+  T=C.shape[1]//B
+  K=C.shape[0]
+
+  dR=np.zeros((8,K,4*B,B),dtype=np.csingle)
+  for k in range(K):
+    # ck will fill each column
+    ck=0
+    for cn in range(T):
+      for p in range(N-1):
+         for q in range(p+1,N):
+            # fill up ck-th block of 4 rows in dR
+            # left hand side -(C J_q^H)^T , right hand side I
+            Ci=C[k,ck,:].reshape((2,2),order='F')
+            lhs=-np.matmul(Ci,np.conj(J[k,2*q:2*(q+1),:].transpose())).transpose()
+            # kron product will fill only rows 4*(p-1)+1:4*p, column ck of dJ
+            for r in range(8):
+              rhs=dJ[r,k,4*p:4*(p+1),:]
+
+              fillvex=np.matmul(np.kron(lhs,np.eye(2)),rhs)
+              ck1=ck%B
+              if addself:
+                # setup 4x1 vector, one goes to depending on r
+                rr=np.zeros(8,dtype=np.float32)
+                rr[r]=1.
+                dVpq=rr[0:8:2]+1j*rr[1:8:2]
+                fillvex[:,ck1] +=dVpq
+
+              dR[r,k,4*ck1:4*(ck1+1),:] +=fillvex
             ck +=1
 
   return dR/(B*T)

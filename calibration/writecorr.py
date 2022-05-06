@@ -1,9 +1,9 @@
 from pyrap.tables import *
 
-def read_corr(msname,outfilename):
+def read_corr(msname,outfilename,colname='CORRECTED_DATA'):
   tt=table(msname,readonly=False)
-  t1=tt.query(sortlist='TIME,ANTENNA1,ANTENNA2',columns='ANTENNA1,ANTENNA2,CORRECTED_DATA')
-  vl=t1.getcol('CORRECTED_DATA')
+  t1=tt.query(sortlist='TIME,ANTENNA1,ANTENNA2',columns='ANTENNA1,ANTENNA2,'+str(colname))
+  vl=t1.getcol(colname)
   a1=t1.getcol('ANTENNA1')
   a2=t1.getcol('ANTENNA2')
   
@@ -32,7 +32,7 @@ def read_corr(msname,outfilename):
  
   print(ct)
   print(nr)
-  t1.putcol('CORRECTED_DATA',vl)
+  t1.putcol(colname,vl)
   t1.close()
   tt.close()
   
@@ -40,9 +40,12 @@ def read_corr(msname,outfilename):
 
 if __name__ == '__main__':
   # args MS outfile.txt (has re,im XX,XY,YX,YY : 8 values)
+  # or args MS outfile.txt columnname
   import sys
   argc=len(sys.argv)
-  if argc>2:
+  if argc==3:
    read_corr(sys.argv[1],sys.argv[2])
+  elif argc==4:
+   read_corr(sys.argv[1],sys.argv[2],sys.argv[3])
 
   exit()

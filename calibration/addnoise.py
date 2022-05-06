@@ -4,7 +4,7 @@ import numpy as np
 import string
 
 
-def read_corr(msname):
+def read_corr(msname,snr=0.05):
   tt=pt.table(msname,readonly=False)
   c=tt.getcol('DATA')
   S=np.linalg.norm(c)
@@ -12,17 +12,19 @@ def read_corr(msname):
   # mean should be zero
   n=n-np.mean(n)
   N=np.linalg.norm(n)
-  scalefac=0.05*(S/N)
+  scalefac=snr*(S/N)
   tt.putcol('DATA',c+n*scalefac)
   tt.close()
   
 
 if __name__ == '__main__':
   # addes noise to MS
-  #args MS 
+  #args MS SNR (fraction ||noise||/||signal||)
   import sys
   argc=len(sys.argv)
   if argc==2:
    read_corr(sys.argv[1])
+  elif argc==3:
+   read_corr(sys.argv[1],float(sys.argv[2]))
 
   exit()
