@@ -6,7 +6,7 @@ import casacore.tables as ctab
 from casacore.measures import measures
 from casacore.quanta import quantity
 from calibration_tools import *
-from influence_tools import analysis_uvw_perdir,calculate_separation
+from influence_tools import analysis_uvw_perdir,calculate_separation,get_cluster_centers
 
 # executables
 makems_binary='/home/sarod/scratch/software/bin/makems'
@@ -62,6 +62,7 @@ while not valid_field:
 rt_sec=(rt_avg.totime().get_value())*24*3600
 t0 = t0 + rt_sec
 strtime=time.strftime('%Y/%m/%d/%H:%M:%S',time.gmtime(t0))
+
 
 hh,mm,ss=radToRA(ra0)
 dd,dmm,dss=radToDec(dec0)
@@ -227,7 +228,7 @@ gg.write('1 1')
 gg1.write('1 1') # do subtract target as well
 arh.write('# format\n')
 arh.write('# cluster_id hybrid admm_rho\n')
-arh.write('1 1 '+str(0.001*sum(sI)*10/Kc)+'\n')
+arh.write('1 1 '+str(sum(sI)*10/Kc)+'\n')
 arh.close()
 
 for cj in range(Kc):
@@ -288,8 +289,11 @@ os.system('cat tmp.cluster >> '+outcluster1)
 os.system('cp '+initialrho+' tmp.rho')
 os.system('cat base.rho > '+initialrho)
 os.system('cat tmp.rho >> '+initialrho)
-#########################################################################
 
+# get separation of each cluster from target,
+# negative separation given if a cluster is below horizon
+separation=calculate_separation(outskymodel1,outcluster1,ra0,dec0,mydm)
+#########################################################################
 # simulate errors for K directions, attenuate those errors
 # target = column K-1
 # outliser = columns 0..K-2
@@ -298,7 +302,7 @@ os.system('cat tmp.rho >> '+initialrho)
 gs=np.zeros((K,8*N*Ts,Nf),dtype=np.float32)
 
 # normalized freqency
-ff=(freqlist-f0)/f0
+norm_f=(freqlist-f0)/f0
 
 for ck in range(K):
   # attenuate random seed
@@ -312,7 +316,7 @@ for ck in range(K):
     alpha=gs[ck,ci,0]
     beta=np.random.randn(3)
     # output=alpha*(b0+b1*f+b2*f^2)
-    freqpol=alpha*(beta[0]+beta[1]*ff+beta[2]*np.power(ff,2))
+    freqpol=alpha*(beta[0]+beta[1]*norm_f+beta[2]*np.power(norm_f,2))
     gs[ck,ci]=freqpol
   
 # now the 1-st timeslot solutions for all freqs are generated
@@ -383,7 +387,7 @@ for ci in range(Nf):
   os.system(sagecal+' -d '+MS+' -s sky0.txt -c cluster0.txt -t '+str(Tdelta)+' -O DATA -a 1 -B 2 -E 1')
   os.system('python addnoise.py '+MS+' '+str(SNR))
   if do_images:
-    os.system(excon+' -m '+MS+' -p 8 -x 2 -c DATA -A /dev/shm/A -B /dev/shm/B -C /dev/shm/C -d 12000')
+    os.system(excon+' -m '+MS+' -p 8 -x 2 -c DATA -A /dev/shm/A -B /dev/shm/B -C /dev/shm/C -d 12000 > /dev/null')
 
 # calibration
 os.system('mpirun -np 3 '+sagecal_mpi+' -f \'L_SB*.MS\'  -A 30 -P 2 -s sky.txt -c cluster.txt -I DATA -O MODEL_DATA -p zsol -G admm_rho.txt -n 4 -t '+str(Tdelta)+' -V')
@@ -392,7 +396,7 @@ os.system('mpirun -np 3 '+sagecal_mpi+' -f \'L_SB*.MS\'  -A 30 -P 2 -s sky.txt -
 for ci in range(Nf):
   MS='L_SB'+str(ci)+'.MS'
   if do_images:
-    os.system(excon+' -m '+MS+' -p 8 -x 2 -c MODEL_DATA -A /dev/shm/A -B /dev/shm/B -C /dev/shm/C -d 12000 -Q residual')
+    os.system(excon+' -m '+MS+' -p 8 -x 2 -c MODEL_DATA -A /dev/shm/A -B /dev/shm/B -C /dev/shm/C -d 12000 -Q residual > /dev/null')
 
 # create average images
 if do_images:
@@ -401,9 +405,11 @@ if do_images:
 
 
 #########################################################################
-separation=calculate_separation(outskymodel1,outcluster1,ra0,dec0,mydm)
+# Get the ra,dec coords of each cluster for imaging
+cluster_ra,cluster_dec=get_cluster_centers(outskymodel1,outcluster1,ra0,dec0)
+ignorelist='ignorelist.txt' # which clusters to ignore when simulating each cluster
 rho=read_rho(initialrho,K)
-for ci in range(1): #Nf
+for ci in range(Nf): #Nf
   MS='L_SB'+str(ci)+'.MS'
   freq=freqlist[ci]
   solutionfile=MS+'.solutions'
@@ -448,6 +454,20 @@ for ci in range(1): #Nf
   J_norm,C_norm,Inf_mean=analysis_uvw_perdir(XX,XY,YX,YY,J,Ct,rho,freqlist,freqout,0.001,ra0,dec0,N,K,Ts,Tdelta,Nparallel=4)
   #for ck in range(K):
   #  os.system('python writecorr.py '+MS+' fff_'+str(ck))
-  #  os.system(excon+' -x 0 -c CORRECTED_DATA -d 128 -p 20 -Q '+str(ck)+' -m '+MS)
+  #  os.system(excon+' -x 0 -c CORRECTED_DATA -d 128 -p 20 -Q '+str(ck)+' -m '+MS+' > /dev/null')
   for ck in range(K):
-      print('%d %f %f %f %f'%(ck,separation[ck],J_norm[ck],C_norm[ck],Inf_mean[ck]))
+      print('clus=%d sep=%f ||J||=%f ||C||=%f |Inf|=%f'%(ck,separation[ck],J_norm[ck],C_norm[ck],Inf_mean[ck]))
+
+  # make images while simulating each cluster (using the solutions)
+  for ck in range(K):
+      ff=open(ignorelist,'w+')
+      for ck1 in range(K):
+          if ck!=ck1:
+              ff.write(str(ck1)+'\n')
+      ff.close()
+      hh,mm,ss=radToRA(cluster_ra[ck])
+      dd,dmm,dss=radToDec(cluster_dec[ck])
+      os.system(sagecal+' -d '+MS+' -s sky.txt -c cluster.txt -t '+str(Tdelta)+' -O DATA -a 1 -B 2 -E 1 -g '+ignorelist) # instead of using the solutions, use beam model
+      os.system(excon+' -m '+MS+' -p 4 -x 2 -c DATA -A /dev/shm/A -B /dev/shm/B -C /dev/shm/C -d 2400 -P '+str(hh)+','+str(mm)+','+str(ss)+','
+        +str(dd)+','+str(dmm)+','+str(dss)+' -Q clus_'+str(ck)+' > /dev/null')
+

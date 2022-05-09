@@ -37,7 +37,7 @@ def analysis_uvwdir_loop(skymodel,clusterfile,uvwfile,rhofile,solutionsfile,alph
     #%%%%%%%%%%%%%%%%%% consensus polynomial info
     Nf=8 # no. of freqs: make sure to match all data
     f=np.linspace(115,185,Nf)*1e6
-    Ne=3 # poly order
+    Ne=3 # consensus poly terms, same as -P parameter in sagecal
     polytype=1 # 0: ordinary, 1: Bernstein
     ra0=0
     dec0=math.pi/2

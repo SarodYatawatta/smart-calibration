@@ -524,6 +524,7 @@ def Dsolutions(C,J,N,Dgrad,r):
 
   dJ=np.zeros((K,4*N,B),dtype=np.csingle)
 
+  EPS=1e-12 # overcome singular matrix
   # setup 4x1 vector, one goes to depending on r
   rr=np.zeros(8,dtype=np.float32)
   rr[r]=1.
@@ -546,7 +547,7 @@ def Dsolutions(C,J,N,Dgrad,r):
             AdV[4*p:4*(p+1),ck%B] +=fillvex
             ck +=1
     
-    dJ[k]=np.linalg.solve(Dgrad[k],AdV)      
+    dJ[k]=np.linalg.solve(Dgrad[k]+EPS*np.eye(4*N),AdV)
 
 
   return dJ
@@ -568,7 +569,7 @@ def Dsolutions_r(C,J,N,Dgrad):
 
   dJ=np.zeros((8,K,4*N,B),dtype=np.csingle)
 
-
+  EPS=1e-12 # overcome singular matrix
   for k in range(K):
     # ck will fill each column
     ck=0
@@ -592,7 +593,7 @@ def Dsolutions_r(C,J,N,Dgrad):
             ck +=1
     
     # iterate over r
-    dJ[0:8,k]=np.linalg.solve(Dgrad[k],AdV[0:8])
+    dJ[0:8,k]=np.linalg.solve(Dgrad[k]+EPS*np.eye(4*N),AdV[0:8])
 
 
   return dJ

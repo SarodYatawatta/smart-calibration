@@ -8,7 +8,8 @@ from casacore.quanta import quantity
 from calibration_tools import *
 
 # return angle of separation of each clusrter in cluster file
-# from ra0,dec0 
+# separation from ra0,dec0
+# also check if source is below horizon, negative separation
 # measure: casacore measure at core position at t0
 # returns: separations: Kx1 (degrees)
 def calculate_separation(skymodel,clusterfile,ra0,dec0,measure):
@@ -35,6 +36,11 @@ def calculate_separation(skymodel,clusterfile,ra0,dec0,measure):
   ra0_q=quantity(ra0,'rad')
   dec0_q=quantity(dec0,'rad')
   target=measure.direction('j2000',ra0_q,dec0_q)
+
+  # get the hour angle of target
+  hadec=measure.measure(target,'HADEC')
+  # get hour angle of target, in degrees
+  ha0=hadec['m1']['value']/math.pi*360
   
   separations=np.zeros(K,dtype=np.float32)
   ck=0
@@ -49,11 +55,69 @@ def calculate_separation(skymodel,clusterfile,ra0,dec0,measure):
        mra_q=quantity(mra,'rad')
        mdec_q=quantity(mdec,'rad')
        cluster_dir=measure.direction('j2000',mra_q,mdec_q)
+       if ck<K-1:
+         riseset=measure.rise(cluster_dir,ev='0.5deg')
+       else: # last cluster is target
+         riseset=measure.rise(target,ev='0.5deg')
        separation=measure.separation(target,cluster_dir)
        separations[ck]=separation.get_value()
+       if riseset['rise']=='below' and riseset['set']=='below':
+           separations[ck]=-separations[ck]
+       elif riseset['rise']!='above' and riseset['set']!='above':
+           # rise,set hour angles
+           rise_ha=riseset['rise'].get_value()
+           set_ha=riseset['set'].get_value()
+           # check if ha0 is within [rise_ha,set_ha]
+           if ha0<rise_ha or ha0>set_ha:
+              separations[ck]=-separations[ck]
      ck+=1
 
   return separations
+
+
+# return ra,dec of each cluster
+# last cluster is set to ra0,dec0
+# returns: ra,dec Kx1 (rad)
+def get_cluster_centers(skymodel,clusterfile,ra0,dec0):
+  fh=open(skymodel,'r')
+  fullset=fh.readlines()
+  fh.close()
+  S={}
+  for cl in fullset:
+   if (not cl.startswith('#')) and len(cl)>1:
+     cl1=cl.split()
+     S[cl1[0]]=cl1[1:]
+
+  fh=open(clusterfile,'r')
+  fullset=fh.readlines()
+  fh.close()
+
+  # determine number of clusters
+  ci=0
+  for cl in fullset:
+   if (not cl.startswith('#')) and len(cl)>1:
+     ci +=1
+  K=ci
+
+  ra_q=np.zeros(K,dtype=np.float32)
+  dec_q=np.zeros(K,dtype=np.float32)
+
+  ck=0
+  for cl in fullset:
+   if (not cl.startswith('#')) and len(cl)>1:
+     cl1=cl.split()
+     for sname in cl1[2:3]: # only consider the first source of each cluster
+       # 3:ra 3:dec sI 0 0 0 sP 0 0 0 0 0 0 freq0
+       sinfo=S[sname]
+       mra=(float(sinfo[0])+float(sinfo[1])/60.+float(sinfo[2])/3600.)*360./24.*math.pi/180.0
+       mdec=(float(sinfo[3])+float(sinfo[4])/60.+float(sinfo[5])/3600.)*math.pi/180.0
+       ra_q[ck]=mra
+       dec_q[ck]=mdec
+     ck+=1
+
+  ra_q[K-1]=ra0
+  dec_q[K-1]=dec0
+  return ra_q,dec_q
 
 
 def globalize(func):
@@ -68,6 +132,12 @@ def globalize(func):
 # norm(C): Kx1
 # |mean(Influence)|: Kx1
 def analysis_uvw_perdir(XX,XY,YX,YY,J,Ct,rho,freqs,freq,alpha,ra0,dec0,N,K,Ts,Tdelta,Nparallel=4):
+    # XX,XY,YX,YY: data arrays : nrows x 1
+    # J: solutions K x Nsol x 2, Nsol=2*N*Ts
+    # Ct: coherencies K x nrows x 4
+    # rho: rho values Kx1
+    # freqs: frequencies Nfx1
+    # freq: which frequency 
     # alpha: spatial constraint regularization parameter
     # N: stations
     # K: directions
@@ -84,7 +154,7 @@ def analysis_uvw_perdir(XX,XY,YX,YY,J,Ct,rho,freqs,freq,alpha,ra0,dec0,N,K,Ts,Td
     # if 1, IQUV, else only I
     fullpol=0
     
-    Ne=3 # poly order
+    Ne=2 # consensus poly terms, same as -P parameter in sagecal
     polytype=1 # 0: ordinary, 1: Bernstein
     
     # create shared memory equal to XX,XY,YX,YY (times K )
