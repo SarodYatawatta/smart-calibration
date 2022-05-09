@@ -7,6 +7,7 @@ from casacore.measures import measures
 from casacore.quanta import quantity
 from calibration_tools import *
 from influence_tools import analysis_uvw_perdir,calculate_separation,get_cluster_centers
+from astropy.io import fits
 
 # executables
 makems_binary='/home/sarod/scratch/software/bin/makems'
@@ -402,7 +403,7 @@ if do_images:
 cluster_ra,cluster_dec=get_cluster_centers(outskymodel1,outcluster1,ra0,dec0)
 ignorelist='ignorelist.txt' # which clusters to ignore when simulating each cluster
 rho=read_rho(initialrho,K)
-for ci in range(Nf): #Nf
+for ci in range(1): #Nf
   MS='L_SB'+str(ci)+'.MS'
   freq=freqlist[ci]
   solutionfile=MS+'.solutions'
@@ -445,12 +446,10 @@ for ci in range(Nf): #Nf
   assert(B*Ts*Tdelta==Ct.shape[1])
 
   J_norm,C_norm,Inf_mean=analysis_uvw_perdir(XX,XY,YX,YY,J,Ct,rho,freqlist,freqout,0.001,ra0,dec0,N,K,Ts,Tdelta,Nparallel=4)
-  #for ck in range(K):
-  #  os.system('python writecorr.py '+MS+' fff_'+str(ck))
-  #  os.system(excon+' -x 0 -c CORRECTED_DATA -d 128 -p 20 -Q '+str(ck)+' -m '+MS+' > /dev/null')
   for ck in range(K):
-      print('clus=%d sep=%f az=%f el=%f ||J||=%f ||C||=%f |Inf|=%f'%(ck,separation[ck],azimuth[ck],elevation[ck],J_norm[ck],C_norm[ck],Inf_mean[ck]))
-
+    os.system('python writecorr.py '+MS+' fff_'+str(ck))
+    os.system(excon+' -x 0 -c CORRECTED_DATA -d 128 -p 20 -F 1e5,1e5,1e5,1e5 -Q inf_'+str(ck)+' -m '+MS+' > /dev/null')
+  sumpixels=np.zeros(K,dtype=np.float32)
   # make images while simulating each cluster (using the solutions)
   for ck in range(K):
       ff=open(ignorelist,'w+')
@@ -461,6 +460,20 @@ for ci in range(Nf): #Nf
       hh,mm,ss=radToRA(cluster_ra[ck])
       dd,dmm,dss=radToDec(cluster_dec[ck])
       os.system(sagecal+' -d '+MS+' -s sky.txt -c cluster.txt -t '+str(Tdelta)+' -O DATA -a 1 -B 2 -E 1 -g '+ignorelist) # instead of using the solutions, use beam model
-      os.system(excon+' -m '+MS+' -p 4 -x 2 -c DATA -A /dev/shm/A -B /dev/shm/B -C /dev/shm/C -d 2400 -P '+str(hh)+','+str(mm)+','+str(ss)+','
+      os.system(excon+' -m '+MS+' -p 4 -x 2 -c DATA -A /dev/shm/A -B /dev/shm/B -C /dev/shm/C -d 1200 -P '+str(hh)+','+str(mm)+','+str(ss)+','
         +str(dd)+','+str(dmm)+','+str(dss)+' -Q clus_'+str(ck)+' > /dev/null')
+      hdu=fits.open(MS+'_clus_'+str(ck)+'_I.fits')
+      fitsdata=hdu[0].data[0]
+      hdu.close()
+      print(fitsdata.shape)
+      # use four corners to find sigma
+      fits_sigma=fitsdata[0,:200,:200].std()+fitsdata[0,-200:,:200].std()\
+          +fitsdata[0,:200,-200:].std()+fitsdata[0,-200:,-200:].std()
+      fits_sigma *=0.25
+      fits_mask=fitsdata>5*fits_sigma
+      masked_pix=fitsdata*fits_mask
+      sumpixels[ck]=masked_pix.sum()
 
+  print('cluster sep az el ||J|| ||C|| |Inf| sI')
+  for ck in range(K):
+      print('%d %f %f %f %f %f %f %f'%(ck,separation[ck],azimuth[ck],elevation[ck],J_norm[ck],C_norm[ck],Inf_mean[ck],sumpixels[ck]))
