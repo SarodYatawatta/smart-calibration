@@ -25,8 +25,6 @@ x='3826896.235129999928176m'
 y='460979.4546659999759868m'
 z='5064658.20299999974668m'
 mypos=mydm.position('ITRF',x,y,z)
-t0=time.mktime(time.gmtime())
-mytime=mydm.epoch('UTC',str(t0)+'s')
 
 # Full time duration (slots), multiply with -t Tdelta option for full duration
 Ts=2
@@ -35,7 +33,7 @@ Tdelta=10
 Tint=1
 
 valid_field=False
-# loop till we find a valid direction (above horizon)
+# loop till we find a valid direction (above horizon) and epoch
 while not valid_field:
   # field coords (rad)
   ra0=np.random.rand(1)*math.pi*2
@@ -45,24 +43,18 @@ while not valid_field:
   myra=quantity(str(ra0)+'rad')
   mydec=quantity(str(dec0)+'rad')
   mydir=mydm.direction('J2000',myra,mydec)
+  t0=time.mktime(time.gmtime())+np.random.rand()*24*3600.0
+  mytime=mydm.epoch('UTC',str(t0)+'s')
   mydm.doframe(mytime)
   mydm.doframe(mypos)
-  riseset=mydm.rise(mydir)
-  rt_avg=quantity(0,'deg')
-  if riseset['rise']=='above' and riseset['set']=='above':
-      valid_field=True
-  elif riseset['rise']=='below' or riseset['set']=='below':
-      valid_field=False 
-  else:
-      # find the highest 
-      rt_avg=0.5*(riseset['rise']+riseset['set'])
+  # check elevation and field is above horizon, 5 deg above
+  azel=mydm.measure(mydir,'AZEL')
+  myel=azel['m1']['value']/math.pi*180
+  if myel>5.0:
       valid_field=True
 
-# convert rt_avg to seconds
-rt_sec=(rt_avg.totime().get_value())*24*3600
-t0 = t0 + rt_sec
+# now we have a valid ra0,dec0 and t0 tuple
 strtime=time.strftime('%Y/%m/%d/%H:%M:%S',time.gmtime(t0))
-
 
 hh,mm,ss=radToRA(ra0)
 dd,dmm,dss=radToDec(dec0)
