@@ -11,7 +11,7 @@ from calibration_tools import *
 # separation from ra0,dec0
 # also check if source is below horizon, negative separation
 # measure: casacore measure at core position at t0
-# returns: separations: Kx1 (degrees)
+# returns: separations,azimuths,elevations: Kx1 (degrees)
 def calculate_separation(skymodel,clusterfile,ra0,dec0,measure):
   fh=open(skymodel,'r')
   fullset=fh.readlines()
@@ -37,12 +37,9 @@ def calculate_separation(skymodel,clusterfile,ra0,dec0,measure):
   dec0_q=quantity(dec0,'rad')
   target=measure.direction('j2000',ra0_q,dec0_q)
 
-  # get the hour angle of target
-  hadec=measure.measure(target,'HADEC')
-  # get hour angle of target, in degrees
-  ha0=hadec['m1']['value']/math.pi*360
-  
   separations=np.zeros(K,dtype=np.float32)
+  azimuths=np.zeros(K,dtype=np.float32)
+  elevations=np.zeros(K,dtype=np.float32)
   ck=0
   for cl in fullset:
    if (not cl.startswith('#')) and len(cl)>1:
@@ -56,23 +53,18 @@ def calculate_separation(skymodel,clusterfile,ra0,dec0,measure):
        mdec_q=quantity(mdec,'rad')
        cluster_dir=measure.direction('j2000',mra_q,mdec_q)
        if ck<K-1:
-         riseset=measure.rise(cluster_dir,ev='0.5deg')
+         cluster_dir=measure.direction('j2000',mra_q,mdec_q)
        else: # last cluster is target
-         riseset=measure.rise(target,ev='0.5deg')
+         cluster_dir=measure.direction('j2000',ra0_q,dec0_q)
        separation=measure.separation(target,cluster_dir)
        separations[ck]=separation.get_value()
-       if riseset['rise']=='below' and riseset['set']=='below':
-           separations[ck]=-separations[ck]
-       elif riseset['rise']!='above' and riseset['set']!='above':
-           # rise,set hour angles
-           rise_ha=riseset['rise'].get_value()
-           set_ha=riseset['set'].get_value()
-           # check if ha0 is within [rise_ha,set_ha]
-           if ha0<rise_ha or ha0>set_ha:
-              separations[ck]=-separations[ck]
+       # get elevation of this dir
+       azel=measure.measure(cluster_dir,'AZEL')
+       azimuths[ck]=azel['m0']['value']/math.pi*180
+       elevations[ck]=azel['m1']['value']/math.pi*180
      ck+=1
 
-  return separations
+  return separations,azimuths,elevations
 
 
 # return ra,dec of each cluster

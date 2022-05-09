@@ -292,7 +292,8 @@ os.system('cat tmp.rho >> '+initialrho)
 
 # get separation of each cluster from target,
 # negative separation given if a cluster is below horizon
-separation=calculate_separation(outskymodel1,outcluster1,ra0,dec0,mydm)
+separation,azimuth,elevation=calculate_separation(outskymodel1,outcluster1,ra0,dec0,mydm)
+
 #########################################################################
 # simulate errors for K directions, attenuate those errors
 # target = column K-1
@@ -456,7 +457,7 @@ for ci in range(Nf): #Nf
   #  os.system('python writecorr.py '+MS+' fff_'+str(ck))
   #  os.system(excon+' -x 0 -c CORRECTED_DATA -d 128 -p 20 -Q '+str(ck)+' -m '+MS+' > /dev/null')
   for ck in range(K):
-      print('clus=%d sep=%f ||J||=%f ||C||=%f |Inf|=%f'%(ck,separation[ck],J_norm[ck],C_norm[ck],Inf_mean[ck]))
+      print('clus=%d sep=%f az=%f el=%f ||J||=%f ||C||=%f |Inf|=%f'%(ck,separation[ck],azimuth[ck],elevation[ck],J_norm[ck],C_norm[ck],Inf_mean[ck]))
 
   # make images while simulating each cluster (using the solutions)
   for ck in range(K):
