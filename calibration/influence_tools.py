@@ -219,6 +219,13 @@ def analysis_uvw_perdir(XX,XY,YX,YY,J,Ct,rho,freqs,freq,alpha,ra0,dec0,N,K,Ts,Td
             dR11=np.mean(dR[r,ck,3:4*B:4],axis=0)
             dR11=np.squeeze(np.matlib.repmat(dR11,1,Tdelta))
             YY0[ck,ts*B:ts*B+B*Tdelta] +=dR11
+            if fullpol:
+              dR11=np.mean(dR[r,ck,1:4*B:4],axis=0)
+              dR11=np.squeeze(np.matlib.repmat(dR11,1,Tdelta))
+              XY0[ck,ts*B:ts*B+B*Tdelta] +=dR11
+              dR11=np.mean(dR[r,ck,2:4*B:4],axis=0)
+              dR11=np.squeeze(np.matlib.repmat(dR11,1,Tdelta))
+              YX0[ck,ts*B:ts*B+B*Tdelta] +=dR11
 ############################# end local function
 ############################# loop over timeslots
 

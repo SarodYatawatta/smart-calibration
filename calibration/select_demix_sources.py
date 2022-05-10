@@ -370,9 +370,8 @@ for ci in range(Nf):
   flist[ci].close()
 
 #########################################################################
-
-# signal to noise ratio
-SNR=0.5
+# signal to noise ratio: in the range 0.05 to 0.5
+SNR=np.random.rand()*(0.5-0.05)+0.05
 do_images=False
 # simulation
 for ci in range(Nf):
@@ -403,6 +402,9 @@ if do_images:
 cluster_ra,cluster_dec=get_cluster_centers(outskymodel1,outcluster1,ra0,dec0)
 ignorelist='ignorelist.txt' # which clusters to ignore when simulating each cluster
 rho=read_rho(initialrho,K)
+# sigma cutoff (this many std above) to detect sources, 
+# use a higher number than usual here
+sigma_threshold=10
 for ci in range(1): #Nf
   MS='L_SB'+str(ci)+'.MS'
   freq=freqlist[ci]
@@ -449,31 +451,51 @@ for ci in range(1): #Nf
   for ck in range(K):
     os.system('python writecorr.py '+MS+' fff_'+str(ck))
     os.system(excon+' -x 0 -c CORRECTED_DATA -d 128 -p 20 -F 1e5,1e5,1e5,1e5 -Q inf_'+str(ck)+' -m '+MS+' > /dev/null')
-  sumpixels=np.zeros(K,dtype=np.float32)
-  # make images while simulating each cluster (using the solutions)
-  for ck in range(K):
-      ff=open(ignorelist,'w+')
-      for ck1 in range(K):
+
+sumpixels=np.zeros(K,dtype=np.float32)
+for ck in range(K-1): # only make images of outlier
+  ff=open(ignorelist,'w+')
+  for ck1 in range(K):
           if ck!=ck1:
               ff.write(str(ck1)+'\n')
-      ff.close()
-      hh,mm,ss=radToRA(cluster_ra[ck])
-      dd,dmm,dss=radToDec(cluster_dec[ck])
+  ff.close()
+  hh,mm,ss=radToRA(cluster_ra[ck])
+  dd,dmm,dss=radToDec(cluster_dec[ck])
+
+  # make images while simulating each cluster (using the solutions)
+  fitsdata=np.zeros((1200,1200),dtype=np.float32)
+  for ci in range(Nf):
+      MS='L_SB'+str(ci)+'.MS'
       os.system(sagecal+' -d '+MS+' -s sky.txt -c cluster.txt -t '+str(Tdelta)+' -O DATA -a 1 -B 2 -E 1 -g '+ignorelist) # instead of using the solutions, use beam model
-      os.system(excon+' -m '+MS+' -p 4 -x 2 -c DATA -A /dev/shm/A -B /dev/shm/B -C /dev/shm/C -d 1200 -P '+str(hh)+','+str(mm)+','+str(ss)+','
+      os.system(excon+' -m '+MS+' -p 4 -x 0 -c DATA -A /dev/shm/A -B /dev/shm/B -C /dev/shm/C -d 1200 -P '+str(hh)+','+str(mm)+','+str(ss)+','
         +str(dd)+','+str(dmm)+','+str(dss)+' -Q clus_'+str(ck)+' > /dev/null')
       hdu=fits.open(MS+'_clus_'+str(ck)+'_I.fits')
-      fitsdata=hdu[0].data[0]
+      fitsdata+=np.squeeze(hdu[0].data[0])
       hdu.close()
-      print(fitsdata.shape)
-      # use four corners to find sigma
-      fits_sigma=fitsdata[0,:200,:200].std()+fitsdata[0,-200:,:200].std()\
-          +fitsdata[0,:200,-200:].std()+fitsdata[0,-200:,-200:].std()
-      fits_sigma *=0.25
-      fits_mask=fitsdata>5*fits_sigma
-      masked_pix=fitsdata*fits_mask
-      sumpixels[ck]=masked_pix.sum()/(1+fits_mask.sum())
+  fitsdata /= Nf
+  # use four corners to find sigma
+  fits_sigma=fitsdata[:200,:200].std()+fitsdata[-200:,:200].std()\
+          +fitsdata[:200,-200:].std()+fitsdata[-200:,-200:].std()
+  fits_sigma *=0.25
+  fits_mask=fitsdata>sigma_threshold*fits_sigma
+  masked_pix=fitsdata*fits_mask
+  sumpixels[ck]+=masked_pix.sum()/(1+fits_mask.sum())
 
-  print('cluster sep az el ||J|| ||C|| |Inf| sI')
-  for ck in range(K):
-      print('%d %f %f %f %f %f %f %f'%(ck,separation[ck],azimuth[ck],elevation[ck],J_norm[ck],C_norm[ck],Inf_mean[ck],sumpixels[ck]))
+# target flux, directly from the model
+sumpixels[K-1]=sum(sI)
+
+# Note: selection of sources based on flux may pickup false positives,
+# but better be safe than sorry
+print('cluster sep az el ||J|| ||C|| |Inf| sI')
+for ck in range(K):
+    print('%d %f %f %f %f %f %f %f'%(ck,separation[ck],azimuth[ck],elevation[ck],J_norm[ck],C_norm[ck],Inf_mean[ck],sumpixels[ck]))
+
+
+# set fluxes of sources below horizon (or below small degrees) to zero
+negel=elevation<3
+sumpixels[negel]=0
+
+# If need to prioritize outlier sources to subtract:
+# see section 5 of
+# https://www.aanda.org/articles/aa/abs/2013/02/aa20874-12/aa20874-12.html,
+# it does not matter where the source is, its apparent intensity is the prime criterion.
