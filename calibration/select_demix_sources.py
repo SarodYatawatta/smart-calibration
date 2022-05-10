@@ -472,7 +472,7 @@ for ci in range(1): #Nf
       fits_sigma *=0.25
       fits_mask=fitsdata>5*fits_sigma
       masked_pix=fitsdata*fits_mask
-      sumpixels[ck]=masked_pix.sum()
+      sumpixels[ck]=masked_pix.sum()/(1+fits_mask.sum())
 
   print('cluster sep az el ||J|| ||C|| |Inf| sI')
   for ck in range(K):
