@@ -131,6 +131,13 @@ def analysis_uvwdir_loop(skymodel,clusterfile,uvwfile,rhofile,solutionsfile,alph
             dR11=np.mean(dR[3:4*B:4],axis=0)
             dR11=np.squeeze(np.matlib.repmat(dR11,1,T))
             YY0[ts*B:ts*B+B*T] +=dR11
+            if fullpol:
+              dR11=np.mean(dR[1:4*B:4],axis=0)
+              dR11=np.squeeze(np.matlib.repmat(dR11,1,T))
+              XY0[ts*B:ts*B+B*T] +=dR11
+              dR11=np.mean(dR[2:4*B:4],axis=0)
+              dR11=np.squeeze(np.matlib.repmat(dR11,1,T))
+              YX0[ts*B:ts*B+B*T] +=dR11
         else:
           # dJ: 8 x K x 4NxB tensor
           dJ=Dsolutions_r(Ct[:,ts*B:ts*B+B*T],J[:,ncal*2*N:ncal*2*N+2*N],N,H)
@@ -144,6 +151,13 @@ def analysis_uvwdir_loop(skymodel,clusterfile,uvwfile,rhofile,solutionsfile,alph
             dR11=np.mean(dR[r,3:4*B:4],axis=0)
             dR11=np.squeeze(np.matlib.repmat(dR11,1,T))
             YY0[ts*B:ts*B+B*T] +=dR11
+            if fullpol:
+              dR11=np.mean(dR[r,1:4*B:4],axis=0)
+              dR11=np.squeeze(np.matlib.repmat(dR11,1,T))
+              XY0[ts*B:ts*B+B*T] +=dR11
+              dR11=np.mean(dR[r,2:4*B:4],axis=0)
+              dR11=np.squeeze(np.matlib.repmat(dR11,1,T))
+              YX0[ts*B:ts*B+B*T] +=dR11
 ############################# end local function
 ############################# loop over timeslots
 
