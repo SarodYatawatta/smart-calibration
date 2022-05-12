@@ -241,8 +241,8 @@ def analysis_uvw_perdir(XX,XY,YX,YY,J,Ct,rho,freqs,freq,alpha,ra0,dec0,N,K,Ts,Td
     C_norm=np.zeros(K,dtype=np.float32)
     Inf_mean=np.zeros(K,dtype=np.float32)
     for ck in range(K):
-        writeuvw('fff_'+str(ck),scalefactor*XX0[ck,:],XY0[ck,:],
-                YX0[ck,:],scalefactor*YY0[ck,:])
+        writeuvw('fff_'+str(ck),scalefactor*XX0[ck,:],scalefactor*XY0[ck,:],
+                scalefactor*YX0[ck,:],scalefactor*YY0[ck,:])
         meaninf=np.abs(np.mean(scalefactor*XX0[ck,:])+np.mean(scalefactor*YY0[ck,:]))
         J_norm[ck]=np.linalg.norm(J[ck])
         C_norm[ck]=np.linalg.norm(Ct[ck])

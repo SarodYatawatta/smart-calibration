@@ -184,7 +184,7 @@ def analysis_uvwdir_loop(skymodel,clusterfile,uvwfile,rhofile,solutionsfile,alph
 
     scalefactor=8*(N*(N-1)/2)*T 
     # scale by 8*(N*(N-1)/2)*T    
-    writeuvw('fff',scalefactor*XX,XY,YX,scalefactor*YY)
+    writeuvw('fff',scalefactor*XX,scalefactor*XY,scalefactor*YX,scalefactor*YY)
 
 
 
