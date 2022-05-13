@@ -36,8 +36,11 @@ optimizer=optim.Adam(net.parameters(),lr=0.001)
 
 batch_size=20
 
-load_model=True
+load_model=False
 save_model=True
+# save model after this many iterations
+save_cadence=10
+
 if load_model:
     checkpoint=torch.load('./net.model',map_location=mydevice)
     net.load_state_dict(checkpoint['model_state_dict'])
@@ -62,6 +65,11 @@ for epoch in range(40):
   optimizer.step()
   print(loss.data.item())
 
+  if save_model and epoch>0 and epoch%save_cadence==0:
+      torch.save({
+        'model_state_dict':net.state_dict(),
+        },'./net.model')
+      R.save_checkpoint()
 
 if save_model:
     torch.save({
