@@ -18,10 +18,11 @@ excon='/home/sarod/work/excon/src/MS/excon'
 # Simulate a LOFAR observation, and generate training data
 # K: directions for demixing + target
 # input: K values of
-#   influence map
+#   influence map (normalized)
 #   metadata: separation,az,el (degrees)
-#   ||J||, ||C||, |Inf| (scalar)
-#   frequency (lowest freq)
+#   ||J||, ||C||, |Inf| (scalar, logarithm)
+#   log likelihood ratio : scalar
+#   frequency (lowest freq, logarithm)
 # input shape: Kx(vector concatanation of the above), concatanated into a vector
 # output: K-1 vector of 1 or 0
 def generate_training_data(Ninf=128):
@@ -449,10 +450,10 @@ def generate_training_data(Ninf=128):
       assert(Ko==K)
       assert(B*Ts*Tdelta==Ct.shape[1])
     
-      J_norm,C_norm,Inf_mean=analysis_uvw_perdir(XX,XY,YX,YY,J,Ct,rho,freqlist,freqout,0.001,ra0,dec0,N,K,Ts,Tdelta,Nparallel=4)
+      J_norm,C_norm,Inf_mean,LLR_mean=analysis_uvw_perdir(XX,XY,YX,YY,J,Ct,rho,freqlist,freqout,0.001,ra0,dec0,N,K,Ts,Tdelta,Nparallel=4)
       for ck in range(K):
         os.system('python writecorr.py '+MS+' fff_'+str(ck))
-        os.system(excon+' -x 0 -c CORRECTED_DATA -d '+str(Ninf)+' -p 20 -F 1e5,1e5,1e5,1e5 -Q inf_'+str(ck)+' -m '+MS+' > /dev/null')
+        os.system(excon+' -x 0 -c CORRECTED_DATA -d '+str(Ninf)+' -p 20 -F 1e5,1e5,1e5,1e5 -Q inf_'+str(ck)+' -m '+MS+' -A /dev/shm/A -B /dev/shm/B -C /dev/shm/C > /dev/null')
     
     sumpixels=np.zeros(K,dtype=np.float32)
     for ck in range(K-1): # only make images of outlier
@@ -488,9 +489,9 @@ def generate_training_data(Ninf=128):
     
     # Note: selection of sources based on flux may pickup false positives,
     # but better be safe than sorry
-    print('cluster sep az el ||J|| ||C|| |Inf| sI')
+    print('cluster sep az el ||J|| ||C|| |Inf| LLR sI')
     for ck in range(K):
-        print('%d %f %f %f %f %f %f %f'%(ck,separation[ck],azimuth[ck],elevation[ck],J_norm[ck],C_norm[ck],Inf_mean[ck],sumpixels[ck]))
+        print('%d %f %f %f %f %f %f %f %f'%(ck,separation[ck],azimuth[ck],elevation[ck],J_norm[ck],C_norm[ck],Inf_mean[ck],LLR_mean[ck],sumpixels[ck]))
     
     
     # set fluxes of sources below horizon (or below small degrees) to zero
@@ -508,8 +509,8 @@ def generate_training_data(Ninf=128):
     y=sumpixels[:-1]
     y[sumpixels[:-1]>0]=1
 
-    # input : NinfxNinf + (separation,azimuth,elevation) + (||J||,||C||,|Inf|) + freq
-    Nout=Ninf*Ninf+3+3+1
+    # input : NinfxNinf + (separation,azimuth,elevation) + log(||J||,||C||,|Inf|) + log_likelihood_ration+ lowest_frequency
+    Nout=Ninf*Ninf+3+3+1+1
     x=np.zeros((K*Nout),dtype=np.float32)
 
     nfreq=0
@@ -518,14 +519,18 @@ def generate_training_data(Ninf=128):
        hdu=fits.open(MS+'_inf_'+str(ck)+'_I.fits')
        x[ck*Nout:(ck*Nout+Ninf*Ninf)]=np.reshape(np.squeeze(hdu[0].data[0]),(-1),order='F')
        hdu.close()
+       imgnorm=np.linalg.norm(x[ck*Nout:(ck*Nout+Ninf*Ninf)])
+       x[ck*Nout:(ck*Nout+Ninf*Ninf)] /= imgnorm
        # other data
        x[ck*Nout+Ninf*Ninf]=separation[ck]
        x[ck*Nout+Ninf*Ninf+1]=azimuth[ck]
        x[ck*Nout+Ninf*Ninf+2]=elevation[ck]
-       x[ck*Nout+Ninf*Ninf+3]=J_norm[ck]
-       x[ck*Nout+Ninf*Ninf+4]=C_norm[ck]
-       x[ck*Nout+Ninf*Ninf+5]=Inf_mean[ck]
-       x[ck*Nout+Ninf*Ninf+6]=freqlist[nfreq]
+       x[ck*Nout+Ninf*Ninf+3]=np.log(J_norm[ck])
+       x[ck*Nout+Ninf*Ninf+4]=np.log(C_norm[ck])
+       x[ck*Nout+Ninf*Ninf+5]=np.log(Inf_mean[ck])
+       #x[ck*Nout+Ninf*Ninf+5]=np.log(imgnorm)
+       x[ck*Nout+Ninf*Ninf+6]=LLR_mean[ck]
+       x[ck*Nout+Ninf*Ninf+7]=np.log(freqlist[nfreq])
 
 
     return x,y

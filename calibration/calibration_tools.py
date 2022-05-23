@@ -794,6 +794,51 @@ def Dresiduals_rk(C,J,N,dJ,addself):
   return dR/(B*T)
 
 
+# return LLR=K x B*T tensor
+# Calculate log likelihood ratio
+def log_likelihood_ratio(R,C,J,N):
+# B: baselines=N(N-1)/2
+# T: timeslots for this interval
+# R: 2*B*Tx2 - residual for this interval
+# C: KxB*Tx4 - coherencies for this interval
+# J: Kx2Nx2 - valid solution for this interval
+
+# Let x: vectorized 4x1 data of each baseline, x=residual+model
+# H0: x ~ CN(0,sigma^2 I), H1: x ~ CN(vec(Jp C_pq J_q^H), sigma^2 I)
+# f_H1(x|mu)/ f_H0(x) ~ exp(-(x-mu)^H(1/sigma^2 I) (x-mu) + x^H (1/sigma^2 I) x)
+# ~ 1/sigma^2 ( -r^H r + (r+mu)^H (r+mu) ), where r+mu=x
+# sigma^2 : estimate using Stokes V
+# ~ 1/sigma^2 (r^H mu+mu^H r)
+# LLR: larger indicate more likely, or strong presence of source
+# Note: since LLR is dependent on C, it is dependent on source_direction+freq+uv cov
+
+  B=N*(N-1)//2
+  T=R.shape[0]//(2*B)
+  K=C.shape[0]
+ 
+  LLR=np.zeros((K,B*T),dtype=np.float32)
+
+  EPS=1e-12 # overcome division by zero
+  for k in range(K):
+    ck=0
+    inv_sigma2=0
+    for cn in range(T):
+       for p in range(N-1):
+          for q in range(p+1,N):
+             Res=R[2*ck:2*(ck+1),:]
+             sV=0.5*(Res[0,1]-Res[1,0])
+             inv_sigma2+=1.0/np.real(sV*np.conj(sV)+EPS)
+             Ci=C[k,ck,:].reshape((2,2),order='F')
+             Model=np.matmul(J[k,2*p:2*(p+1),:],np.matmul(Ci,np.conj(J[k,2*q:2*(q+1),:].transpose())))
+             r=Res.ravel()
+             mu=Model.ravel()
+             LLR[k,ck]=(-np.linalg.norm(r)+np.linalg.norm(r+mu))
+             ck+=1
+             del Res,Ci,Model
+    LLR[k] *= inv_sigma2/(B*T)
+  return LLR
+
+
 
 #readsolutions('L_SB1.MS.solutions')
 #print(radectolm(1,0.2,0.4,0.3))

@@ -156,13 +156,18 @@ def analysis_uvw_perdir(XX,XY,YX,YY,J,Ct,rho,freqs,freq,alpha,ra0,dec0,N,K,Ts,Td
     shmYX=shared_memory.SharedMemory(create=True,size=K*YX.nbytes)
     shmYY=shared_memory.SharedMemory(create=True,size=K*YY.nbytes)
 
+
     xx_shape=XX.shape
     xx0_shape=(K,xx_shape[0])
+
+    shmLLR=shared_memory.SharedMemory(create=True,size=K*xx_shape[0]*np.dtype(np.float32).itemsize)
     # create arrays that can be used in multiprocessing
     XX0=np.ndarray(xx0_shape,dtype=XX.dtype,buffer=shmXX.buf)
     XY0=np.ndarray(xx0_shape,dtype=XY.dtype,buffer=shmXY.buf)
     YX0=np.ndarray(xx0_shape,dtype=YX.dtype,buffer=shmYX.buf)
     YY0=np.ndarray(xx0_shape,dtype=YY.dtype,buffer=shmYY.buf)
+
+    LLR=np.ndarray((K,xx_shape[0]),dtype=np.float32,buffer=shmLLR.buf)
 
     # which frequency index to work with
     fidx=np.argmin(np.abs(freqs-freq))
@@ -226,6 +231,8 @@ def analysis_uvw_perdir(XX,XY,YX,YY,J,Ct,rho,freqs,freq,alpha,ra0,dec0,N,K,Ts,Td
               dR11=np.mean(dR[r,ck,2:4*B:4],axis=0)
               dR11=np.squeeze(np.matlib.repmat(dR11,1,Tdelta))
               YX0[ck,ts*B:ts*B+B*Tdelta] +=dR11
+
+        LLR[:,ts*B:ts*B+B*Tdelta]=log_likelihood_ratio(R,Ct[:,ts*B:ts*B+B*Tdelta],J[:,ncal*2*N:ncal*2*N+2*N],N)
 ############################# end local function
 ############################# loop over timeslots
 
@@ -237,16 +244,23 @@ def analysis_uvw_perdir(XX,XY,YX,YY,J,Ct,rho,freqs,freq,alpha,ra0,dec0,N,K,Ts,Td
 
     # scale by 8*(N*(N-1)/2)*T    
     scalefactor=8*(N*(N-1)/2)*Tdelta 
+    XX0 *=scalefactor
+    XY0 *=scalefactor
+    YX0 *=scalefactor
+    YY0 *=scalefactor
+
     J_norm=np.zeros(K,dtype=np.float32)
     C_norm=np.zeros(K,dtype=np.float32)
     Inf_mean=np.zeros(K,dtype=np.float32)
+    llr_mean=np.zeros(K,dtype=np.float32)
     for ck in range(K):
-        writeuvw('fff_'+str(ck),scalefactor*XX0[ck,:],scalefactor*XY0[ck,:],
-                scalefactor*YX0[ck,:],scalefactor*YY0[ck,:])
-        meaninf=np.abs(np.mean(scalefactor*XX0[ck,:])+np.mean(scalefactor*YY0[ck,:]))
+        writeuvw('fff_'+str(ck),XX0[ck,:],XY0[ck,:],
+                YX0[ck,:],YY0[ck,:])
+        meaninfluence=np.abs(np.mean(XX0[ck,:])+np.mean(YY0[ck,:]))
         J_norm[ck]=np.linalg.norm(J[ck])
         C_norm[ck]=np.linalg.norm(Ct[ck])
-        Inf_mean[ck]=meaninf
+        Inf_mean[ck]=meaninfluence
+        llr_mean[ck]=np.mean(LLR[ck])
 
 
     # release shared memory
@@ -258,5 +272,7 @@ def analysis_uvw_perdir(XX,XY,YX,YY,J,Ct,rho,freqs,freq,alpha,ra0,dec0,N,K,Ts,Td
     shmYX.unlink()
     shmYY.close()
     shmYY.unlink()
+    shmLLR.close()
+    shmLLR.unlink()
 
-    return J_norm,C_norm,Inf_mean
+    return J_norm,C_norm,Inf_mean,llr_mean
