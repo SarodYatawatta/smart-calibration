@@ -452,8 +452,10 @@ def generate_training_data(Ninf=128):
     
       J_norm,C_norm,Inf_mean,LLR_mean=analysis_uvw_perdir(XX,XY,YX,YY,J,Ct,rho,freqlist,freqout,0.001,ra0,dec0,N,K,Ts,Tdelta,Nparallel=4)
       for ck in range(K):
-        sb.run('python writecorr.py '+MS+' fff_'+str(ck),shell=True)
-        sb.run(excon+' -x 0 -c CORRECTED_DATA -d '+str(Ninf)+' -p 20 -F 1e5,1e5,1e5,1e5 -Q inf_'+str(ck)+' -m '+MS+' -A /dev/shm/A -B /dev/shm/B -C /dev/shm/C > /dev/null',shell=True)
+        proc1=sb.Popen('python writecorr.py '+MS+' fff_'+str(ck),shell=True)
+        proc1.wait()
+        proc1=sb.Popen(excon+' -x 0 -c CORRECTED_DATA -d '+str(Ninf)+' -p 20 -F 1e5,1e5,1e5,1e5 -Q inf_'+str(ck)+' -m '+MS+' -A /dev/shm/A -B /dev/shm/B -C /dev/shm/C > /dev/null',shell=True)
+        proc1.wait()
     
     sumpixels=np.zeros(K,dtype=np.float32)
     for ck in range(K-1): # only make images of outlier
@@ -469,9 +471,11 @@ def generate_training_data(Ninf=128):
       fitsdata=np.zeros((1200,1200),dtype=np.float32)
       for ci in range(Nf):
           MS='L_SB'+str(ci)+'.MS'
-          sb.run(sagecal+' -d '+MS+' -s sky.txt -c cluster.txt -t '+str(Tdelta)+' -O DATA -a 1 -B 2 -E 1 -g '+ignorelist,shell=True) # instead of using the solutions, use beam model
-          sb.run(excon+' -m '+MS+' -p 4 -x 0 -c DATA -A /dev/shm/A -B /dev/shm/B -C /dev/shm/C -d 1200 -P '+str(hh)+','+str(mm)+','+str(ss)+','
+          proc1=sb.Popen(sagecal+' -d '+MS+' -s sky.txt -c cluster.txt -t '+str(Tdelta)+' -O DATA -a 1 -B 2 -E 1 -g '+ignorelist,shell=True) # instead of using the solutions, use beam model
+          proc1.wait()
+          proc1=sb.Popen(excon+' -m '+MS+' -p 4 -x 0 -c DATA -A /dev/shm/A -B /dev/shm/B -C /dev/shm/C -d 1200 -P '+str(hh)+','+str(mm)+','+str(ss)+','
             +str(dd)+','+str(dmm)+','+str(dss)+' -Q clus_'+str(ck)+' > /dev/null',shell=True)
+          proc1.wait()
           hdu=fits.open(MS+'_clus_'+str(ck)+'_I.fits')
           fitsdata+=np.squeeze(hdu[0].data[0])
           hdu.close()
