@@ -829,7 +829,7 @@ def log_likelihood_ratio(R,C,J,N):
           for q in range(p+1,N):
              Res=R[2*ck:2*(ck+1),:]
              sV=0.5*(Res[0,1]-Res[1,0])
-             sigma2+=np.real(sV*np.conj(sV)+EPS)
+             sigma2+=np.real(sV*np.conj(sV))
              Ci=C[k,ck,:].reshape((2,2),order='F')
              Model=np.matmul(J[k,2*p:2*(p+1),:],np.matmul(Ci,np.conj(J[k,2*q:2*(q+1),:].transpose())))
              r[4*ck:4*(ck+1)]=Res.ravel()
@@ -837,7 +837,7 @@ def log_likelihood_ratio(R,C,J,N):
              ck+=1
              del Res,Ci,Model
     LLR[k]=(-np.linalg.norm(r)**2+np.linalg.norm(r+mu)**2)
-    LLR[k] /= sigma2
+    LLR[k] /= sigma2+EPS
   return LLR
 
 

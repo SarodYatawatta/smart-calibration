@@ -1,5 +1,5 @@
 import math
-import os
+import subprocess as sb
 import time
 import numpy as np
 import casacore.tables as ctab
@@ -106,13 +106,13 @@ def generate_training_data(Ninf=128):
       +'MSName='+str(msout)+'\n'
     )
     ff.close()
-    os.system('cp '+makems_parset+' makems.cfg')
-    os.system(makems_binary)
+    sb.run('cp '+makems_parset+' makems.cfg',shell=True)
+    sb.run(makems_binary,shell=True)
     
     # output will be msout_p0
     msoutp0=msout+'_p0'
     
-    os.system('rsync -a ./LBA/FIELD '+msoutp0+'/')
+    sb.run('rsync -a ./LBA/FIELD '+msoutp0+'/',shell=True)
     # update FIELD table
     field=ctab.table(msoutp0+'/FIELD',readonly=False)
     delay_dir=field.getcol('DELAY_DIR')
@@ -137,12 +137,12 @@ def generate_training_data(Ninf=128):
     field.close()
     
     if hba:
-      os.system('rsync -a ./HBA/LOFAR_ANTENNA_FIELD '+msoutp0+'/')
+      sb.run('rsync -a ./HBA/LOFAR_ANTENNA_FIELD '+msoutp0+'/',shell=True)
     else:
-      os.system('rsync -a ./LBA/LOFAR_ANTENNA_FIELD '+msoutp0+'/')
+      sb.run('rsync -a ./LBA/LOFAR_ANTENNA_FIELD '+msoutp0+'/',shell=True)
     
     # remove old files
-    os.system('rm -rf L_SB*.MS L_SB*fits')
+    sb.run('rm -rf L_SB*.MS L_SB*fits',shell=True)
     # frequencies
     if hba:
         freqlist=np.linspace(110,180,num=Nf)*1e6
@@ -153,8 +153,8 @@ def generate_training_data(Ninf=128):
     
     for ci in range(Nf):
         MS='L_SB'+str(ci)+'.MS'
-        os.system('rsync -a '+msoutp0+'/ '+MS)
-        os.system('python changefreq.py '+MS+' '+str(freqlist[ci]))
+        sb.run('rsync -a '+msoutp0+'/ '+MS,shell=True)
+        sb.run('python changefreq.py '+MS+' '+str(freqlist[ci]),shell=True)
     
     #state - ra,dec,flux,freq
     
@@ -281,21 +281,21 @@ def generate_training_data(Ninf=128):
     
     # python ./convertmodel.py ../A-Team_lowres.skymodel base.sky base.cluster base.rho
     # python ./convertmodel.py ../A-Team_lowres-update.skymodel base.sky base.cluster base.rho
-    os.system('cp '+outskymodel+' tmp.sky')
-    os.system('cat base.sky > '+outskymodel)
-    os.system('cat tmp.sky >> '+outskymodel)
-    os.system('cp '+outskymodel1+' tmp.sky')
-    os.system('cat base.sky > '+outskymodel1)
-    os.system('cat tmp.sky >> '+outskymodel1)
-    os.system('cp '+outcluster+' tmp.cluster')
-    os.system('cat base.cluster > '+outcluster)
-    os.system('cat tmp.cluster >> '+outcluster)
-    os.system('cp '+outcluster1+' tmp.cluster')
-    os.system('cat base.cluster > '+outcluster1)
-    os.system('cat tmp.cluster >> '+outcluster1)
-    os.system('cp '+initialrho+' tmp.rho')
-    os.system('cat base.rho > '+initialrho)
-    os.system('cat tmp.rho >> '+initialrho)
+    sb.run('cp '+outskymodel+' tmp.sky',shell=True)
+    sb.run('cat base.sky > '+outskymodel,shell=True)
+    sb.run('cat tmp.sky >> '+outskymodel,shell=True)
+    sb.run('cp '+outskymodel1+' tmp.sky',shell=True)
+    sb.run('cat base.sky > '+outskymodel1,shell=True)
+    sb.run('cat tmp.sky >> '+outskymodel1,shell=True)
+    sb.run('cp '+outcluster+' tmp.cluster',shell=True)
+    sb.run('cat base.cluster > '+outcluster,shell=True)
+    sb.run('cat tmp.cluster >> '+outcluster,shell=True)
+    sb.run('cp '+outcluster1+' tmp.cluster',shell=True)
+    sb.run('cat base.cluster > '+outcluster1,shell=True)
+    sb.run('cat tmp.cluster >> '+outcluster1,shell=True)
+    sb.run('cp '+initialrho+' tmp.rho',shell=True)
+    sb.run('cat base.rho > '+initialrho,shell=True)
+    sb.run('cat tmp.rho >> '+initialrho,shell=True)
     
     # get separation of each cluster from target,
     # negative separation given if a cluster is below horizon
@@ -378,26 +378,26 @@ def generate_training_data(Ninf=128):
     for ci in range(Nf):
       MS='L_SB'+str(ci)+'.MS'
       if do_solutions:
-        os.system(sagecal+' -d '+MS+' -s sky0.txt -c cluster0.txt -t '+str(Tdelta)+' -O DATA -a 1 -B 2 -E 1 -p '+MS+'.S.solutions')
+        sb.run(sagecal+' -d '+MS+' -s sky0.txt -c cluster0.txt -t '+str(Tdelta)+' -O DATA -a 1 -B 2 -E 1 -p '+MS+'.S.solutions',shell=True)
       else:
-        os.system(sagecal+' -d '+MS+' -s sky0.txt -c cluster0.txt -t '+str(Tdelta)+' -O DATA -a 1 -B 2 -E 1')
-      os.system('python addnoise.py '+MS+' '+str(SNR))
+        sb.run(sagecal+' -d '+MS+' -s sky0.txt -c cluster0.txt -t '+str(Tdelta)+' -O DATA -a 1 -B 2 -E 1',shell=True)
+      sb.run('python addnoise.py '+MS+' '+str(SNR),shell=True)
       if do_images:
-        os.system(excon+' -m '+MS+' -p 8 -x 2 -c DATA -A /dev/shm/A -B /dev/shm/B -C /dev/shm/C -d 12000 > /dev/null')
+        sb.run(excon+' -m '+MS+' -p 8 -x 2 -c DATA -A /dev/shm/A -B /dev/shm/B -C /dev/shm/C -d 12000 > /dev/null',shell=True)
     
     # calibration
-    os.system('mpirun -np 3 '+sagecal_mpi+' -f \'L_SB*.MS\'  -A 30 -P 2 -s sky.txt -c cluster.txt -I DATA -O MODEL_DATA -p zsol -G admm_rho.txt -n 4 -t '+str(Tdelta)+' -V')
+    sb.run('mpirun -np 3 '+sagecal_mpi+' -f \'L_SB*.MS\'  -A 30 -P 2 -s sky.txt -c cluster.txt -I DATA -O MODEL_DATA -p zsol -G admm_rho.txt -n 4 -t '+str(Tdelta)+' -V',shell=True)
     
     
     for ci in range(Nf):
       MS='L_SB'+str(ci)+'.MS'
       if do_images:
-        os.system(excon+' -m '+MS+' -p 8 -x 2 -c MODEL_DATA -A /dev/shm/A -B /dev/shm/B -C /dev/shm/C -d 12000 -Q residual > /dev/null')
+        sb.run(excon+' -m '+MS+' -p 8 -x 2 -c MODEL_DATA -A /dev/shm/A -B /dev/shm/B -C /dev/shm/C -d 12000 -Q residual > /dev/null',shell=True)
     
     # create average images
     if do_images:
-      os.system('bash ./calmean.sh \'L_SB*.MS_I*fits\' 1 && python calmean_.py && mv bar.fits data.fits')
-      os.system('bash ./calmean.sh \'L_SB*.MS_residual_I*fits\' 1 && python calmean_.py && mv bar.fits residual.fits')
+      sb.run('bash ./calmean.sh \'L_SB*.MS_I*fits\' 1 && python calmean_.py && mv bar.fits data.fits',shell=True)
+      sb.run('bash ./calmean.sh \'L_SB*.MS_residual_I*fits\' 1 && python calmean_.py && mv bar.fits residual.fits',shell=True)
     
     
     #########################################################################
@@ -452,8 +452,8 @@ def generate_training_data(Ninf=128):
     
       J_norm,C_norm,Inf_mean,LLR_mean=analysis_uvw_perdir(XX,XY,YX,YY,J,Ct,rho,freqlist,freqout,0.001,ra0,dec0,N,K,Ts,Tdelta,Nparallel=4)
       for ck in range(K):
-        os.system('python writecorr.py '+MS+' fff_'+str(ck))
-        os.system(excon+' -x 0 -c CORRECTED_DATA -d '+str(Ninf)+' -p 20 -F 1e5,1e5,1e5,1e5 -Q inf_'+str(ck)+' -m '+MS+' -A /dev/shm/A -B /dev/shm/B -C /dev/shm/C > /dev/null')
+        sb.run('python writecorr.py '+MS+' fff_'+str(ck),shell=True)
+        sb.run(excon+' -x 0 -c CORRECTED_DATA -d '+str(Ninf)+' -p 20 -F 1e5,1e5,1e5,1e5 -Q inf_'+str(ck)+' -m '+MS+' -A /dev/shm/A -B /dev/shm/B -C /dev/shm/C > /dev/null',shell=True)
     
     sumpixels=np.zeros(K,dtype=np.float32)
     for ck in range(K-1): # only make images of outlier
@@ -469,9 +469,9 @@ def generate_training_data(Ninf=128):
       fitsdata=np.zeros((1200,1200),dtype=np.float32)
       for ci in range(Nf):
           MS='L_SB'+str(ci)+'.MS'
-          os.system(sagecal+' -d '+MS+' -s sky.txt -c cluster.txt -t '+str(Tdelta)+' -O DATA -a 1 -B 2 -E 1 -g '+ignorelist) # instead of using the solutions, use beam model
-          os.system(excon+' -m '+MS+' -p 4 -x 0 -c DATA -A /dev/shm/A -B /dev/shm/B -C /dev/shm/C -d 1200 -P '+str(hh)+','+str(mm)+','+str(ss)+','
-            +str(dd)+','+str(dmm)+','+str(dss)+' -Q clus_'+str(ck)+' > /dev/null')
+          sb.run(sagecal+' -d '+MS+' -s sky.txt -c cluster.txt -t '+str(Tdelta)+' -O DATA -a 1 -B 2 -E 1 -g '+ignorelist,shell=True) # instead of using the solutions, use beam model
+          sb.run(excon+' -m '+MS+' -p 4 -x 0 -c DATA -A /dev/shm/A -B /dev/shm/B -C /dev/shm/C -d 1200 -P '+str(hh)+','+str(mm)+','+str(ss)+','
+            +str(dd)+','+str(dmm)+','+str(dss)+' -Q clus_'+str(ck)+' > /dev/null',shell=True)
           hdu=fits.open(MS+'_clus_'+str(ck)+'_I.fits')
           fitsdata+=np.squeeze(hdu[0].data[0])
           hdu.close()
