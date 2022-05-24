@@ -160,14 +160,14 @@ def analysis_uvw_perdir(XX,XY,YX,YY,J,Ct,rho,freqs,freq,alpha,ra0,dec0,N,K,Ts,Td
     xx_shape=XX.shape
     xx0_shape=(K,xx_shape[0])
 
-    shmLLR=shared_memory.SharedMemory(create=True,size=K*xx_shape[0]*np.dtype(np.float32).itemsize)
+    shmLLR=shared_memory.SharedMemory(create=True,size=K*Ts*np.dtype(np.float32).itemsize)
     # create arrays that can be used in multiprocessing
     XX0=np.ndarray(xx0_shape,dtype=XX.dtype,buffer=shmXX.buf)
     XY0=np.ndarray(xx0_shape,dtype=XY.dtype,buffer=shmXY.buf)
     YX0=np.ndarray(xx0_shape,dtype=YX.dtype,buffer=shmYX.buf)
     YY0=np.ndarray(xx0_shape,dtype=YY.dtype,buffer=shmYY.buf)
 
-    LLR=np.ndarray((K,xx_shape[0]),dtype=np.float32,buffer=shmLLR.buf)
+    LLR=np.ndarray((K,Ts),dtype=np.float32,buffer=shmLLR.buf)
 
     # which frequency index to work with
     fidx=np.argmin(np.abs(freqs-freq))
@@ -232,7 +232,7 @@ def analysis_uvw_perdir(XX,XY,YX,YY,J,Ct,rho,freqs,freq,alpha,ra0,dec0,N,K,Ts,Td
               dR11=np.squeeze(np.matlib.repmat(dR11,1,Tdelta))
               YX0[ck,ts*B:ts*B+B*Tdelta] +=dR11
 
-        LLR[:,ts*B:ts*B+B*Tdelta]=log_likelihood_ratio(R,Ct[:,ts*B:ts*B+B*Tdelta],J[:,ncal*2*N:ncal*2*N+2*N],N)
+        LLR[:,ncal]=log_likelihood_ratio(R,Ct[:,ts*B:ts*B+B*Tdelta],J[:,ncal*2*N:ncal*2*N+2*N],N)
 ############################# end local function
 ############################# loop over timeslots
 

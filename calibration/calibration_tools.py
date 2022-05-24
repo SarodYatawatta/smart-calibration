@@ -816,26 +816,28 @@ def log_likelihood_ratio(R,C,J,N):
   T=R.shape[0]//(2*B)
   K=C.shape[0]
  
-  LLR=np.zeros((K,B*T),dtype=np.float32)
+  LLR=np.zeros((K),dtype=np.float32)
 
   EPS=1e-12 # overcome division by zero
   for k in range(K):
     ck=0
-    inv_sigma2=0
+    sigma2=0
+    r=np.zeros((B*T*4),dtype=np.csingle)
+    mu=np.zeros((B*T*4),dtype=np.csingle)
     for cn in range(T):
        for p in range(N-1):
           for q in range(p+1,N):
              Res=R[2*ck:2*(ck+1),:]
              sV=0.5*(Res[0,1]-Res[1,0])
-             inv_sigma2+=1.0/np.real(sV*np.conj(sV)+EPS)
+             sigma2+=np.real(sV*np.conj(sV)+EPS)
              Ci=C[k,ck,:].reshape((2,2),order='F')
              Model=np.matmul(J[k,2*p:2*(p+1),:],np.matmul(Ci,np.conj(J[k,2*q:2*(q+1),:].transpose())))
-             r=Res.ravel()
-             mu=Model.ravel()
-             LLR[k,ck]=(-np.linalg.norm(r)+np.linalg.norm(r+mu))
+             r[4*ck:4*(ck+1)]=Res.ravel()
+             mu[4*ck:4*(ck+1)]=Model.ravel()
              ck+=1
              del Res,Ci,Model
-    LLR[k] *= inv_sigma2/(B*T)
+    LLR[k]=(-np.linalg.norm(r)**2+np.linalg.norm(r+mu)**2)
+    LLR[k] /= sigma2
   return LLR
 
 
