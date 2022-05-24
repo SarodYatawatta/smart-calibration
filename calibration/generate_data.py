@@ -389,9 +389,9 @@ def generate_training_data(Ninf=128):
     sb.run('mpirun -np 3 '+sagecal_mpi+' -f \'L_SB*.MS\'  -A 30 -P 2 -s sky.txt -c cluster.txt -I DATA -O MODEL_DATA -p zsol -G admm_rho.txt -n 4 -t '+str(Tdelta)+' -V',shell=True)
     
     
-    for ci in range(Nf):
-      MS='L_SB'+str(ci)+'.MS'
-      if do_images:
+    if do_images:
+      for ci in range(Nf):
+        MS='L_SB'+str(ci)+'.MS'
         sb.run(excon+' -m '+MS+' -p 8 -x 2 -c MODEL_DATA -A /dev/shm/A -B /dev/shm/B -C /dev/shm/C -d 12000 -Q residual > /dev/null',shell=True)
     
     # create average images
