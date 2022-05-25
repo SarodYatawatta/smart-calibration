@@ -149,6 +149,7 @@ class TransformerEncoder(nn.Module):
 
     @torch.no_grad()
     def get_attention_maps(self,x):
+        x=self.input_net(x)
         attention_maps=[]
         for l in self.layers:
             _, attn_map=l.self_attn(x,return_attention=True)
