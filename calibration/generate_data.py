@@ -385,7 +385,7 @@ def generate_training_data(Ninf=128):
       if do_images:
         sb.run(excon+' -m '+MS+' -p 8 -x 2 -c DATA -A /dev/shm/A -B /dev/shm/B -C /dev/shm/C -d 12000 > /dev/null',shell=True)
     
-    # calibration
+    # calibration, use --oversubscribe if not enough slots are available
     sb.run('mpirun -np 3 '+sagecal_mpi+' -f \'L_SB*.MS\'  -A 30 -P 2 -s sky.txt -c cluster.txt -I DATA -O MODEL_DATA -p zsol -G admm_rho.txt -n 4 -t '+str(Tdelta)+' -V',shell=True)
     
     
