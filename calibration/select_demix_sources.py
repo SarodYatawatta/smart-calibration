@@ -48,7 +48,7 @@ if load_model:
     net.train()
     R.load_checkpoint()
 
-for epoch in range(3):
+for epoch in range(30):
   x,y=generate_training_data(Ninf=Ninf)
   #x,y=np.random.randn((input_dims)),np.random.randn((K-1))
   R.store_data(x,y)
@@ -59,12 +59,17 @@ for epoch in range(3):
   inputs,labels=R.sample_minibatch(batch_size)
   inputs,labels=Variable(torch.from_numpy(inputs)).to(mydevice),Variable(torch.from_numpy(labels)).to(mydevice)
 
-  optimizer.zero_grad()
-  outputs=net(inputs)
-  loss=criterion(outputs,labels)
-  loss.backward()
-  optimizer.step()
-  print(loss.data.item())
+  def closure():
+    if torch.is_grad_enabled():
+      optimizer.zero_grad()
+    outputs=net(inputs)
+    loss=criterion(outputs,labels)
+    if loss.requires_grad:
+        loss.backward()
+        print(loss.data.item())
+    return loss
+
+  optimizer.step(closure)
 
   if save_model and epoch>0 and epoch%save_cadence==0:
       torch.save({
