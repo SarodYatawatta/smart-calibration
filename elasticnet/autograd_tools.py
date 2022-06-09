@@ -32,6 +32,7 @@ def jacobian(y, x):
 
 ################# return inv(Hessian)  q
 # where : q vector is multiplied by (approx) inverse Hessian
+# using BFGS approximation for the inverse Hessian
 def inv_hessian_mult(opt,q):
  # opt: LBFGS optimizer struct (at convergence)
  # q: vector to be multiplied : Note this will be modified
@@ -73,36 +74,40 @@ def gather_flat_grad(model):
    views=[]
    for s in model.parameters():
       if s.grad is not None:
-         views.append(s.grad.data.view(-1))
+         views.append(s.grad.data.contiguous().view(-1))
          s.grad=None
-   return torch.cat(views,0)   
- 
+   return torch.cat(views,0)
 
+# return parameter vector
+def gather_flat_parameters(parameters):
+   views=[]
+   for s in parameters:
+     views.append(s.contiguous().view(-1))
+   return torch.cat(views,0)
 
+################################################
 # Return influcence function size: output x input
 # model: nn.Module, with forward() and backward() methods
 # Output y = model(x)
 # model parameters are theta, stored internally
 # opt: LBFGS optimizer, re-used for inverse Hessian
-def influence_matrix(model,xshape,yshape,opt=None):
- # xshape: x (input) shape
- # yshape: y (output) shape
+def influence_matrix(model,xinput,youtput,opt=None):
+ # xinput: x (input)
+ # youtput: y (output)
  
  # pass all ones input via the model
- x=torch.ones(xshape,requires_grad=True).to(mydevice)
- y=torch.ones(yshape,requires_grad=False).to(mydevice)
+ x=torch.ones(xinput.shape,requires_grad=True).to(mydevice)
  # vectorize
- xx=x.view(-1)
- N=xx.shape[0]
- y=y.view(-1)
- M=y.shape[0]
+ N=x.view(-1).shape[0]
+ M=youtput.view(-1).shape[0]
 
  # labels: vector of 1
- labels=torch.ones_like(y).to(mydevice)
+ labels=torch.ones_like(youtput).to(mydevice)
 
+ criterion=torch.nn.MSELoss()
  def l2loss(ytrue,xin):
     ypred=model(xin) 
-    return torch.sum((ytrue-ypred)**2)
+    return criterion(ypred.view(-1),ytrue.view(-1))
 
 
  # storage MxN for Influence function
@@ -121,7 +126,8 @@ def influence_matrix(model,xshape,yshape,opt=None):
    if opt:
      iddf=inv_hessian_mult(opt,ddf_dxdtheta)
    else:
-     iddf=ddf_dxdtheta
+     #iddf=ddf_dxdtheta
+     iddf=inverse_hessian_vec_prod(model, criterion, x, labels, ddf_dxdtheta, maxiter=10)
 
    # inner loop over M
    for cj in range(M):
@@ -135,3 +141,48 @@ def influence_matrix(model,xshape,yshape,opt=None):
      If[cj,ci]=torch.dot(iddf,jvec)
 
  return If
+
+
+
+################################################
+# Product of Hessian x vector, Perlmutter trick
+# taken from https://discuss.pytorch.org/t/efficient-o-n-hessian-vector-product-with-pearlmutter-trick/59037/3
+# model: forward model to get parameters, prediction
+# criterion: loss function, use MSE loss here
+# v: vector to be multiplied by the Hessian
+def hessian_vec_prod(model, criterion, inputs, outputs, v):
+    # Zero the gradients
+    model.zero_grad()
+    # Forward-pass
+    prediction = model(inputs)
+    L = criterion(prediction, outputs)
+    # Compute gradient
+    y = torch.autograd.grad(L, model.parameters(), create_graph = True, retain_graph = True)
+    # Apply R-operator on gradient
+    vp = right_op(gather_flat_parameters(y), model.parameters(), v)
+    return vp
+
+def right_op(y, x, v):
+    # Adapted from: https://gist.github.com/apaszke/c7257ac04cb8debb82221764f6d117ad
+    w = torch.zeros(y.size(), requires_grad = True).to(mydevice)
+    g = torch.autograd.grad(y, x, grad_outputs = w, create_graph = True, allow_unused = True)
+    r = torch.autograd.grad(gather_flat_parameters(g), w, grad_outputs = v, create_graph = False, allow_unused = True)
+    return gather_flat_parameters(r)
+
+
+# solve H x = v to find x = inv(H) v
+# using Taylor expansion, see Koh&Liang 2017, sec 3
+# Hiv_0 = v
+# Hiv_{j+1} = v+ (I-H) Hiv_j = v + Hiv_j - H (Hiv_j)
+def inverse_hessian_vec_prod(model, criterion, inputs, outputs, v, maxiter=10):
+   # initial value
+   x=v
+   # always normalize for convergence, otherwise goes to nan/inf
+   x/=torch.norm(x)
+   for ci in range(maxiter):
+     # find H x
+     q = hessian_vec_prod(model,criterion,inputs,outputs,x)
+     x = v + x - q
+     x/=torch.norm(x)
+
+   return x
