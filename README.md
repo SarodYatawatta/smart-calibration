@@ -1,5 +1,6 @@
 # Smart Calibration
 Using reinforcement learning for hyperparameter tuning in calibration of radio telescopes, and in other data processing pipelines (like elastic net regression). Code to accompany the paper [Deep reinforcement learning for smart calibration of radio telescopes](https://academic.oup.com/mnras/advance-article-abstract/doi/10.1093/mnras/stab1401/6276731) [(preprint)](https://arxiv.org/abs/2102.03200).
+Enhancements based on [spatial regularization](ttps://academic.oup.com/mnras/article/510/2/2718/6462915) [(preprint)](https://arxiv.org/abs/2110.06780) are included.
 
 RL agent code is based on [this code](https://github.com/philtabor/Youtube-Code-Repository.git). Prioritized experience replay memory code is based on [this code](https://github.com/Ullar-Kask/TD3-PER).
 
