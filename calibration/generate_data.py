@@ -46,15 +46,29 @@ def generate_training_data(Ninf=128):
     Tdelta=10
     # integration time (s)
     Tint=1
+
+    # approx A-Team coordinates, for generating targets close to one
+    # CasA, CygA, HerA, TauA, VirA
+    a_team_dirs=[(6.123273, 1.026748), (5.233838, 0.710912), (4.412048, 0.087195), (1.459697, 0.383912), (3.276019, 0.216299)]
+    close_to_Ateam=2 # 0,...4 will select one of the above
+    distance_to_Ateam=1 # max distance, in degrees
     
     valid_field=False
     # loop till we find a valid direction (above horizon) and epoch
     while not valid_field:
       # field coords (rad)
-      ra0=np.random.rand(1)*math.pi*2
-      dec0=np.random.rand(1)*math.pi/2
-      ra0=ra0[0]
-      dec0=dec0[0]
+      if close_to_Ateam==-1:
+        ra0=np.random.rand(1)*math.pi*2
+        dec0=np.random.rand(1)*math.pi/2
+        ra0=ra0[0]
+        dec0=dec0[0]
+      else: # generate direction close to given A-Team source
+        # random distance in rad
+        distance_from_here=np.random.rand(1)*distance_to_Ateam/180*math.pi
+        ra0=a_team_dirs[close_to_Ateam][0]+distance_from_here[0]
+        distance_from_here=np.random.rand(1)*distance_to_Ateam/180*math.pi
+        dec0=a_team_dirs[close_to_Ateam][1]+distance_from_here[0]
+
       myra=quantity(str(ra0)+'rad')
       mydec=quantity(str(dec0)+'rad')
       mydir=mydm.direction('J2000',myra,mydec)
@@ -304,7 +318,7 @@ def generate_training_data(Ninf=128):
     #########################################################################
     # simulate errors for K directions, attenuate those errors
     # target = column K-1
-    # outliser = columns 0..K-2
+    # outlier = columns 0..K-2
     if do_solutions:
        # storage for full solutions
        gs=np.zeros((K,8*N*Ts,Nf),dtype=np.float32)
@@ -386,7 +400,7 @@ def generate_training_data(Ninf=128):
         sb.run(excon+' -m '+MS+' -p 8 -x 2 -c DATA -A /dev/shm/A -B /dev/shm/B -C /dev/shm/C -d 12000 > /dev/null',shell=True)
     
     # calibration, use --oversubscribe if not enough slots are available
-    sb.run('mpirun -np 3 '+sagecal_mpi+' -f \'L_SB*.MS\'  -A 30 -P 2 -s sky.txt -c cluster.txt -I DATA -O MODEL_DATA -p zsol -G admm_rho.txt -n 4 -t '+str(Tdelta)+' -V',shell=True)
+    sb.run('mpirun -np 3 --oversubscribe '+sagecal_mpi+' -f \'L_SB*.MS\'  -A 30 -P 2 -s sky.txt -c cluster.txt -I DATA -O MODEL_DATA -p zsol -G admm_rho.txt -n 4 -t '+str(Tdelta)+' -V',shell=True)
     
     
     if do_images:

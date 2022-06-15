@@ -32,17 +32,30 @@ class ReplayBuffer:
 
      return x,y
 
-  def save_checkpoint(self):
-      with open(self.filename,'wb') as f:
+  def save_checkpoint(self,filename=None):
+      if filename is None:
+        with open(self.filename,'wb') as f:
+          pickle.dump(self,f)
+      else:
+        with open(filename,'wb') as f:
           pickle.dump(self,f)
 
-  def load_checkpoint(self):
-      with open(self.filename,'rb') as f:
+  def load_checkpoint(self,filename=None):
+      if filename is None:
+        with open(self.filename,'rb') as f:
           temp=pickle.load(f)
           self.mem_size=temp.mem_size
           self.mem_cntr=temp.mem_cntr
           self.x=temp.x
           self.y=temp.y
+      else:
+        with open(filename,'rb') as f:
+          temp=pickle.load(f)
+          self.mem_size=temp.mem_size
+          self.mem_cntr=temp.mem_cntr
+          self.x=temp.x
+          self.y=temp.y
+
 
 ########################################################
 # The following taken from 

@@ -2,7 +2,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.autograd import Variable
 from generate_data import generate_training_data
 from transformer_models import *
 
@@ -30,7 +29,7 @@ model_dims=Nmodel*n_heads
 
 # num_layers below indicate how many attention blocks are stacked
 net=TransformerEncoder(num_layers=1,input_dim=input_dims, model_dim=model_dims, num_heads=n_heads, num_classes=K-1, dropout=0.001).to(mydevice)
-R=ReplayBuffer(800,(input_dims,),(K-1,))
+R=ReplayBuffer(3200,(input_dims,),(K-1,))
 
 criterion=nn.BCELoss()
 optimizer=optim.Adam(net.parameters(),lr=0.001)
@@ -57,7 +56,7 @@ for epoch in range(30):
       continue
 
   inputs,labels=R.sample_minibatch(batch_size)
-  inputs,labels=Variable(torch.from_numpy(inputs)).to(mydevice),Variable(torch.from_numpy(labels)).to(mydevice)
+  inputs,labels=torch.from_numpy(inputs).to(mydevice),torch.from_numpy(labels).to(mydevice)
 
   def closure():
     if torch.is_grad_enabled():

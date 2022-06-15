@@ -29,6 +29,8 @@ def read_skymodel(skymodel,sagecalsky,sagecalcluster,admm_rho='base.rho'):
     t=s.table
     ra=ra_to_rad(np.array(t['Ra']))
     dec=dec_to_rad(np.array(t['Dec']))
+    # use the following for generation targets close to A-team
+    print('%s %f %f'%(patch,ra[0],dec[0]))
     stype=[x.encode('ascii') for x in np.array(t['Type'])]
     f0=np.array(t['ReferenceFrequency'])
     sI=np.array(t['I'])
