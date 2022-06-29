@@ -2,8 +2,17 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import sys
+# append script path
+sys.path.append('/home/sarod/work/ttorch/smart-calibration/calibration')
+
 from generate_data import generate_training_data
 from transformer_models import *
+
+#########################################################
+# Simulate data and (approx) ground truth labels
+#########################################################
+
 
 # (try to) use a GPU for computation?
 use_cuda=True
@@ -27,14 +36,7 @@ n_heads=K
 input_dims=Ninput*n_heads
 model_dims=Nmodel*n_heads
 
-# num_layers below indicate how many attention blocks are stacked
-net=TransformerEncoder(num_layers=1,input_dim=input_dims, model_dim=model_dims, num_heads=n_heads, num_classes=K-1, dropout=0.001).to(mydevice)
 R=ReplayBuffer(3200,(input_dims,),(K-1,))
-
-criterion=nn.BCELoss()
-optimizer=optim.Adam(net.parameters(),lr=0.001)
-
-batch_size=64 # started with 20, dropout=0.1
 
 load_model=False
 save_model=False
@@ -42,42 +44,14 @@ save_model=False
 save_cadence=4
 
 if load_model:
-    checkpoint=torch.load('./net.model',map_location=mydevice)
-    net.load_state_dict(checkpoint['model_state_dict'])
-    net.train()
     R.load_checkpoint()
 
 for epoch in range(30):
   x,y=generate_training_data(Ninf=Ninf)
-  #x,y=np.random.randn((input_dims)),np.random.randn((K-1))
   R.store_data(x,y)
 
-  if R.mem_cntr < batch_size:
-      continue
-
-  inputs,labels=R.sample_minibatch(batch_size)
-  inputs,labels=torch.from_numpy(inputs).to(mydevice),torch.from_numpy(labels).to(mydevice)
-
-  def closure():
-    if torch.is_grad_enabled():
-      optimizer.zero_grad()
-    outputs=net(inputs)
-    loss=criterion(outputs,labels)
-    if loss.requires_grad:
-        loss.backward()
-        print(loss.data.item())
-    return loss
-
-  optimizer.step(closure)
-
   if save_model and epoch>0 and epoch%save_cadence==0:
-      torch.save({
-        'model_state_dict':net.state_dict(),
-        },'./net.model')
       R.save_checkpoint()
 
 if save_model:
-    torch.save({
-        'model_state_dict':net.state_dict(),
-        },'./net.model')
     R.save_checkpoint()

@@ -89,7 +89,7 @@ def generate_training_data(Ninf=128):
 
       # calculate separations
       separations=calculate_separation_vec(a_team_dirs,ra0,dec0,mydm)
-      print(separations)
+
       #if myel>5.0:
       #    valid_field=True
       if ((separations[2]<=60 and separations[3]<=60) or
@@ -173,9 +173,12 @@ def generate_training_data(Ninf=128):
     sb.run('rm -rf L_SB*.MS L_SB*fits',shell=True)
     # frequencies
     if hba:
-        freqlist=np.linspace(110,180,num=Nf)*1e6
+        flow=110+np.random.rand()*(180-110)/2
+        fhigh=110+(180-110)/2+np.random.rand()*(180-110)/2
     else:
-        freqlist=np.linspace(30,70,num=Nf)*1e6
+        flow=30+np.random.rand()*(70-30)/2
+        fhigh=30+(70-30)/2+np.random.rand()*(70-30)/2
+    freqlist=np.linspace(flow,fhigh,num=Nf)*1e6
     
     f0=np.mean(freqlist)
     
@@ -471,7 +474,7 @@ def generate_training_data(Ninf=128):
       freqout,J=readsolutions(solutionfile)
       assert(J.shape[0]==K)
       assert(J.shape[1]==Ts*2*N)
-      assert(freqout==freq)
+      assert(abs(freqout-freq)<1e3)
       # predict sky model
       Ko,Ct=skytocoherencies_uvw(outskymodel1,outcluster1,uu,vv,ww,N,freqout,ra0,dec0)
       assert(Ko==K)
@@ -710,7 +713,7 @@ def get_info_from_dataset(mslist,timesec,Ninf=128):
 
     # download target sky model (using LINC script) (including path)
     target_skymodel='./target.sky.txt'
-    ##sb.run('rm -rf '+target_skymodel,shell=True)
+    sb.run('rm -rf '+target_skymodel,shell=True)
     sb.run('python '+LINC_GET_TARGET+' '+submslist[0]+' '+target_skymodel,shell=True)
 
     outskymodel='sky.txt' # for calibration
