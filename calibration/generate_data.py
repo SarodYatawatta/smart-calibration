@@ -6,14 +6,20 @@ import casacore.tables as ctab
 from casacore.measures import measures
 from casacore.quanta import quantity
 from calibration_tools import *
-from influence_tools import analysis_uvw_perdir,calculate_separation,get_cluster_centers
+from influence_tools import analysis_uvw_perdir,calculate_separation,calculate_separation_vec,get_cluster_centers
 from astropy.io import fits
+import astropy.time as atime
 
 # executables
 makems_binary='/home/sarod/scratch/software/bin/makems'
 sagecal='/home/sarod/work/DIRAC/sagecal/build/dist/bin/sagecal_gpu'
 sagecal_mpi='/home/sarod/work/DIRAC/sagecal/build/dist/bin/sagecal-mpi_gpu'
 excon='/home/sarod/work/excon/src/MS/excon'
+# DP3 with necessary environment settings
+DP3='export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/tmp/test/lib && export OPENBLAS_NUM_THREADS=1 && /home/sarod/scratch/software/bin/DP3'
+# LINC script to download target sky
+LINC_GET_TARGET='/home/sarod/scratch/LINC/scripts/download_skymodel_target.py --Radius 5'
+
 
 # Simulate a LOFAR observation, and generate training data
 # K: directions for demixing + target
@@ -23,8 +29,9 @@ excon='/home/sarod/work/excon/src/MS/excon'
 #   ||J||, ||C||, |Inf| (scalar, logarithm)
 #   log likelihood ratio : scalar
 #   frequency (lowest freq, logarithm)
-# input shape: Kx(vector concatanation of the above), concatanated into a vector
-# output: K-1 vector of 1 or 0
+# returns:
+# x: input, shape: Kx(vector concatanation of the above), concatanated into a vector
+# y: output, shape: K-1 vector of 1 or 0
 def generate_training_data(Ninf=128):
     # Ninf: Influence map size (Ninf x Ninf)
     do_images=False
@@ -50,7 +57,7 @@ def generate_training_data(Ninf=128):
     # approx A-Team coordinates, for generating targets close to one
     # CasA, CygA, HerA, TauA, VirA
     a_team_dirs=[(6.123273, 1.026748), (5.233838, 0.710912), (4.412048, 0.087195), (1.459697, 0.383912), (3.276019, 0.216299)]
-    close_to_Ateam=2 # 0,...4 will select one of the above
+    close_to_Ateam=-1 # 0,...4 will select one of the above
     distance_to_Ateam=1 # max distance, in degrees
     
     valid_field=False
@@ -79,7 +86,14 @@ def generate_training_data(Ninf=128):
       # check elevation and field is above horizon, 5 deg above
       azel=mydm.measure(mydir,'AZEL')
       myel=azel['m1']['value']/math.pi*180
-      if myel>5.0:
+
+      # calculate separations
+      separations=calculate_separation_vec(a_team_dirs,ra0,dec0,mydm)
+      print(separations)
+      #if myel>5.0:
+      #    valid_field=True
+      if ((separations[2]<=60 and separations[3]<=60) or
+         (separations[3]<=60 and separations[4]<=60)) and myel>3.0:
           valid_field=True
     
     # now we have a valid ra0,dec0 and t0 tuple
@@ -169,8 +183,6 @@ def generate_training_data(Ninf=128):
         MS='L_SB'+str(ci)+'.MS'
         sb.run('rsync -a '+msoutp0+'/ '+MS,shell=True)
         sb.run('python changefreq.py '+MS+' '+str(freqlist[ci]),shell=True)
-    
-    #state - ra,dec,flux,freq
     
     #########################################################################
     # sky model/error simulation
@@ -293,8 +305,9 @@ def generate_training_data(Ninf=128):
     gg.close()
     gg1.close()
     
-    # python ./convertmodel.py ../A-Team_lowres.skymodel base.sky base.cluster base.rho
-    # python ./convertmodel.py ../A-Team_lowres-update.skymodel base.sky base.cluster base.rho
+    # How to convert DP3 skymodel:
+    # python ./convertmodel.py ../A-Team_lowres.skymodel base.sky base.cluster base.rho start_cluster_id
+    # python ./convertmodel.py ../A-Team_lowres-update.skymodel base.sky base.cluster base.rho start_cluster_id
     sb.run('cp '+outskymodel+' tmp.sky',shell=True)
     sb.run('cat base.sky > '+outskymodel,shell=True)
     sb.run('cat tmp.sky >> '+outskymodel,shell=True)
@@ -552,3 +565,255 @@ def generate_training_data(Ninf=128):
 
 
     return x,y
+
+
+# mslist: list of MS file names, out of which
+# a subset will be chosen to sample a time duration of 'timesec' seconds
+# channels of each MS will be averaged to one
+# Nf=how many MS to exctract, equalt to the number of freqs used
+# returns the list of extracted MS names
+def extract_dataset(mslist,timesec,Nf=3):
+   mslist.sort()
+   msname=mslist[0]
+   tt=ctab.table(msname,readonly=True)
+   starttime= tt[0]['TIME']
+   endtime=tt[tt.nrows()-1]['TIME']
+   N=tt.nrows()
+   tt.close()
+   Nms=len(mslist)
+
+   # need to have at least Nf MS
+   assert(Nms>=Nf)
+
+   # Parset for extracting and averaging
+   parset_sample='extract_sample.parset'
+   parset=open(parset_sample,'w+')
+
+   # sample time interval
+   t_start=np.random.rand()*(endtime-starttime)+starttime
+   t_end=t_start+timesec
+   t0=atime.Time(t_start/(24*60*60),format='mjd',scale='utc')
+   dt=t0.to_datetime()
+   str_tstart=str(dt.year)+'/'+str(dt.month)+'/'+str(dt.day)+'/'+str(dt.hour)+':'+str(dt.minute)+':'+str(dt.second)
+   t0=atime.Time(t_end/(24*60*60),format='mjd',scale='utc')
+   dt=t0.to_datetime()
+   str_tend=str(dt.year)+'/'+str(dt.month)+'/'+str(dt.day)+'/'+str(dt.hour)+':'+str(dt.minute)+':'+str(dt.second)
+
+   parset.write('steps=[avg]\n'
+     +'avg.type=average\n'
+     +'avg.timestep=1\n'
+     +'avg.freqstep=64\n'
+  #   +'msin.starttimeslot='+str(np.random.randint(N))+'\n'
+  #   +'msin.ntimes='+str(60)+'\n'
+     +'msin.datacolumn=DATA\n'
+     +'msin.starttime='+str_tstart+'\n'
+     +'msin.endtime='+str_tend+'\n')
+   parset.close()
+
+   # process subset of MS from mslist
+   submslist=list()
+   submslist.append(mslist[0])
+   aa=list(np.random.choice(np.arange(1,Nms-1),Nf-2,replace=False))
+   aa.sort()
+   for ms_id in aa:
+     submslist.append(mslist[ms_id])
+   submslist.append(mslist[-1])
+
+   # remove old files
+   sb.run('rm -rf L_SB*.MS',shell=True)
+   # now process each of selected MS
+   extracted_ms=list()
+   for ci in range(Nf):
+      MS='L_SB'+str(ci)+'.MS'
+      proc1=sb.Popen(DP3+' '+parset_sample+' msin='+submslist[ci]+' msout='+MS, shell=True)
+      proc1.wait()
+      extracted_ms.append(MS)
+
+   # return extracted MS list
+   return extracted_ms
+
+
+# mslist: list of MS file names, out of which
+# a subset will be chosen to sample a time duration of 'timesec' seconds
+# channels of each MS will be averaged to one
+# K: directions for demixing + target
+# input: K values of
+#   influence map (normalized)
+#   metadata: separation,az,el (degrees)
+#   ||J||, ||C||, |Inf| (scalar, logarithm)
+#   log likelihood ratio : scalar
+#   frequency (lowest freq, logarithm)
+# returns:
+# x: input, shape: Kx(vector concatanation of the above), concatanated into a vector
+def get_info_from_dataset(mslist,timesec,Ninf=128):
+    Nf=3
+    K=6 # total must match = (A-team clusters + 1)
+    submslist=extract_dataset(mslist,timesec,Nf)
+    # get frequencies
+    freqlist=np.zeros(Nf)
+    for ci in range(len(submslist)):
+        msname=submslist[ci]
+        tf=ctab.table(msname+'/SPECTRAL_WINDOW',readonly=True)
+        ch0=tf.getcol('CHAN_FREQ')
+        reffreq=tf.getcol('REF_FREQUENCY')
+        freqlist[ci]=ch0[0,0]
+        tf.close()
+
+    # update data with weights
+    tt=ctab.table(submslist[0],readonly=True)
+    data=tt.getcol('DATA')
+    scalefac=np.sqrt(np.linalg.norm(data)/data.size)
+    tt.close()
+    for ci in range(len(submslist)):
+      msname=submslist[ci]
+      tt=ctab.table(msname,readonly=False)
+      data=tt.getcol('DATA')
+      data /=scalefac
+      tt.putcol('DATA',data)
+      tt.close()
+      # add extra columns
+      sb.run('python ./addcol.py '+msname+' MODEL_DATA',shell=True)
+      sb.run('python ./addcol.py '+msname+' CORRECTED_DATA',shell=True)
+
+
+    # Get target coords
+    field=ctab.table(submslist[0]+'/FIELD',readonly=True)
+    phase_dir=field.getcol('PHASE_DIR')
+    ra0=phase_dir[0][0][0]
+    dec0=phase_dir[0][0][1]
+    field.close()
+
+    # get antennas
+    tt=ctab.table(submslist[0]+'/ANTENNA',readonly=True)
+    N=tt.nrows()
+    tt.close()
+    # baselines
+    B=N*(N-1)//2
+
+    # get integration time
+    tt=ctab.table(submslist[0],readonly=True)
+    tt1=tt.getcol('INTERVAL')
+    Tdelta=tt[0]['INTERVAL']
+    t0=tt[0]['TIME']
+    tt.close()
+    Tslots=math.ceil(timesec/Tdelta)
+
+    # epoch coordinate UTC 
+    mydm=measures()
+    x='3826896.235129999928176m'
+    y='460979.4546659999759868m'
+    z='5064658.20299999974668m'
+    mypos=mydm.position('ITRF',x,y,z)
+    mytime=mydm.epoch('UTC',str(t0)+'s')
+    mydm.doframe(mytime)
+    mydm.doframe(mypos)
+
+    # download target sky model (using LINC script) (including path)
+    target_skymodel='./target.sky.txt'
+    ##sb.run('rm -rf '+target_skymodel,shell=True)
+    sb.run('python '+LINC_GET_TARGET+' '+submslist[0]+' '+target_skymodel,shell=True)
+
+    outskymodel='sky.txt' # for calibration
+    outcluster='cluster.txt' # for calibration
+    initialrho='admm_rho.txt' # values for rho, determined analytically
+
+    # Convert DP3 skymodel of target
+    sb.run('python ./convertmodel.py '+target_skymodel+' tmp.sky tmp.cluster tmp.rho 1',shell=True)
+    sb.run('cat base.sky > '+outskymodel,shell=True)
+    sb.run('cat tmp.sky >> '+outskymodel,shell=True)
+    sb.run('cat base.cluster > '+outcluster,shell=True)
+    sb.run('cat tmp.cluster >> '+outcluster,shell=True)
+    sb.run('cat base.rho > '+initialrho,shell=True)
+    sb.run('cat tmp.rho >> '+initialrho,shell=True)
+
+    separation,azimuth,elevation=calculate_separation(outskymodel,outcluster,ra0,dec0,mydm)
+    # Full time duration =timesec
+    # calibration duration (slots)
+    Tdelta=10
+    Ts=(Tslots+Tdelta-1)//Tdelta
+
+    # calibration, use --oversubscribe if not enough slots are available -A 30
+    sb.run('mpirun -np 3 --oversubscribe '+sagecal_mpi+' -f \'L_SB*.MS\'  -A 3 -P 2 -s sky.txt -c cluster.txt -I DATA -O MODEL_DATA -p zsol -G admm_rho.txt -n 4 -t '+str(Tdelta)+' -V',shell=True)
+ 
+    #########################################################################
+    # Get the ra,dec coords of each cluster for imaging
+    cluster_ra,cluster_dec=get_cluster_centers(outskymodel,outcluster,ra0,dec0)
+    rho=read_rho(initialrho,K)
+    for ci in range(1): #Nf
+      MS='L_SB'+str(ci)+'.MS'
+      freq=freqlist[ci]
+      solutionfile=MS+'.solutions'
+      tt=ctab.table(MS,readonly=True)  
+      t1=tt.query(sortlist='TIME,ANTENNA1,ANTENNA2',columns='ANTENNA1,ANTENNA2,UVW,MODEL_DATA')
+      vl=t1.getcol('MODEL_DATA')
+      a1=t1.getcol('ANTENNA1')
+      a2=t1.getcol('ANTENNA2')
+      uvw=t1.getcol('UVW')
+      nrtime=t1.nrows()
+      assert(nrtime==(B+N)*Tslots)
+      XX=np.zeros((B*Ts*Tdelta),dtype=np.csingle)
+      XY=np.zeros((B*Ts*Tdelta),dtype=np.csingle)
+      YX=np.zeros((B*Ts*Tdelta),dtype=np.csingle)
+      YY=np.zeros((B*Ts*Tdelta),dtype=np.csingle)
+      uu=np.zeros((B*Ts*Tdelta),dtype=np.float32)
+      vv=np.zeros((B*Ts*Tdelta),dtype=np.float32)
+      ww=np.zeros((B*Ts*Tdelta),dtype=np.float32)
+      ck=0
+      for nr in range(0,nrtime):
+          if (a1[nr]!=a2[nr]):
+              XX[ck]=vl[nr,0,0]
+              XY[ck]=vl[nr,0,1]
+              YX[ck]=vl[nr,0,2]
+              YY[ck]=vl[nr,0,3]
+              uu[ck]=uvw[nr,0]
+              vv[ck]=uvw[nr,1]
+              ww[ck]=uvw[nr,2]
+              ck+=1
+      tt.close()
+      
+      # read solutions
+      freqout,J=readsolutions(solutionfile)
+      assert(J.shape[0]==K)
+      assert(J.shape[1]==Ts*2*N)
+      assert(abs(freqout-freq)<1e3)
+      # predict sky model
+      Ko,Ct=skytocoherencies_uvw(outskymodel,outcluster,uu,vv,ww,N,freqout,ra0,dec0)
+      assert(Ko==K)
+      assert(B*Ts*Tdelta==Ct.shape[1])
+    
+      J_norm,C_norm,Inf_mean,LLR_mean=analysis_uvw_perdir(XX,XY,YX,YY,J,Ct,rho,freqlist,freqout,0.001,ra0,dec0,N,K,Ts,Tdelta,Nparallel=4)
+      for ck in range(K):
+        proc1=sb.Popen('python writecorr.py '+MS+' fff_'+str(ck),shell=True)
+        proc1.wait()
+        proc1=sb.Popen(excon+' -x 0 -c CORRECTED_DATA -d '+str(Ninf)+' -p 20 -F 1e5,1e5,1e5,1e5 -Q inf_'+str(ck)+' -m '+MS+' -A /dev/shm/A -B /dev/shm/B -C /dev/shm/C > /dev/null',shell=True)
+        proc1.wait()
+    
+    print('cluster sep az el ||J|| ||C|| |Inf| LLR')
+    for ck in range(K):
+        print('%d %f %f %f %f %f %f %f'%(ck,separation[ck],azimuth[ck],elevation[ck],J_norm[ck],C_norm[ck],Inf_mean[ck],LLR_mean[ck]))
+    
+    
+    # input : NinfxNinf + (separation,azimuth,elevation) + log(||J||,||C||,|Inf|) + log_likelihood_ration+ lowest_frequency
+    Nout=Ninf*Ninf+3+3+1+1
+    x=np.zeros((K*Nout),dtype=np.float32)
+
+    nfreq=0
+    MS='L_SB'+str(nfreq)+'.MS'
+    for ck in range(K):
+       hdu=fits.open(MS+'_inf_'+str(ck)+'_I.fits')
+       x[ck*Nout:(ck*Nout+Ninf*Ninf)]=np.reshape(np.squeeze(hdu[0].data[0]),(-1),order='F')
+       hdu.close()
+       imgnorm=np.linalg.norm(x[ck*Nout:(ck*Nout+Ninf*Ninf)])
+       x[ck*Nout:(ck*Nout+Ninf*Ninf)] /= imgnorm
+       # other data
+       x[ck*Nout+Ninf*Ninf]=separation[ck]
+       x[ck*Nout+Ninf*Ninf+1]=azimuth[ck]
+       x[ck*Nout+Ninf*Ninf+2]=elevation[ck]
+       x[ck*Nout+Ninf*Ninf+3]=np.log(J_norm[ck])
+       x[ck*Nout+Ninf*Ninf+4]=np.log(C_norm[ck])
+       x[ck*Nout+Ninf*Ninf+5]=np.log(Inf_mean[ck])
+       #x[ck*Nout+Ninf*Ninf+5]=np.log(imgnorm)
+       x[ck*Nout+Ninf*Ninf+6]=LLR_mean[ck]
+       x[ck*Nout+Ninf*Ninf+7]=np.log(freqlist[nfreq])
+
+    return x

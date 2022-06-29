@@ -24,6 +24,19 @@ class ReplayBuffer:
      self.y[index]=y
      self.mem_cntr +=1
 
+  def resize(self,newsize):
+     assert(newsize>self.mem_size)
+     index=self.mem_cntr % self.mem_size
+     input_shape=self.x.shape
+     xnew=np.zeros((newsize,*input_shape[1:]),dtype=np.float32)
+     xnew[:self.mem_size,:]=self.x
+     output_shape=self.y.shape
+     ynew=np.zeros((newsize,*output_shape[1:]),dtype=np.float32)
+     ynew[:self.mem_size,:]=self.y
+     self.x=xnew
+     self.y=ynew
+     self.mem_size=newsize
+
   def sample_minibatch(self,batch_size):
      filled=min(self.mem_cntr,self.mem_size)
      batch=np.random.choice(filled,batch_size,replace=False)

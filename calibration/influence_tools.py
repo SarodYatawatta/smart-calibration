@@ -67,6 +67,31 @@ def calculate_separation(skymodel,clusterfile,ra0,dec0,measure):
   return separations,azimuths,elevations
 
 
+# calculate separation for given list of ATeam positions
+# if the ATeam source is below horizon, add 180 to separation
+# (to exclude being considered)
+# a_team_dirs: Kx1 tuple (ra,dec) (rad)
+def calculate_separation_vec(a_team_dirs,ra0,dec0,measure):
+  ra0_q=quantity(ra0,'rad')
+  dec0_q=quantity(dec0,'rad')
+  target=measure.direction('j2000',ra0_q,dec0_q)
+  separations=np.zeros(len(a_team_dirs))
+  ck=0
+  for (mra,mdec) in a_team_dirs:
+       mra_q=quantity(mra,'rad')
+       mdec_q=quantity(mdec,'rad')
+       cluster_dir=measure.direction('j2000',mra_q,mdec_q)
+       separation=measure.separation(target,cluster_dir)
+       separations[ck]=separation.get_value()
+       azel=measure.measure(cluster_dir,'AZEL')
+       if azel['m1']['value']<0:
+           separations[ck] +=180
+       ck+=1
+
+  return separations
+
+
+
 # return ra,dec of each cluster
 # last cluster is set to ra0,dec0
 # returns: ra,dec Kx1 (rad)

@@ -36,8 +36,8 @@ optimizer=optim.Adam(net.parameters(),lr=0.001)
 
 batch_size=64 # started with 20, dropout=0.1
 
-load_model=True
-save_model=True
+load_model=False
+save_model=False
 # save model after this many iterations
 save_cadence=4
 

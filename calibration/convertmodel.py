@@ -13,7 +13,7 @@ def dec_to_rad(degval):
 def asec_to_rad(asec):
   return asec/(60*60)*math.pi/180.0
 
-def read_skymodel(skymodel,sagecalsky,sagecalcluster,admm_rho='base.rho'):
+def read_skymodel(skymodel,sagecalsky,sagecalcluster,admm_rho='base.rho',start_cluster=1):
   outsky=open(sagecalsky,'w+')
   outcluster=open(sagecalcluster,'w+')
   outrho=open(admm_rho,'w+')
@@ -22,7 +22,9 @@ def read_skymodel(skymodel,sagecalsky,sagecalcluster,admm_rho='base.rho'):
   outcluster.write('### Cluster file\n')
   s=lsmtool.load(skymodel)
   patches=s.getPatchNames()
-  cluster_id=2 # cluster 1 is the target
+  # cluster '1' is the target, so when converting A-Team, 
+  # give start_cluster number as an input argument
+  cluster_id=start_cluster 
   for patch in patches:
     s=lsmtool.load(skymodel)
     s.select('Patch == '+patch)
@@ -33,6 +35,9 @@ def read_skymodel(skymodel,sagecalsky,sagecalcluster,admm_rho='base.rho'):
     print('%s %f %f'%(patch,ra[0],dec[0]))
     stype=[x.encode('ascii') for x in np.array(t['Type'])]
     f0=np.array(t['ReferenceFrequency'])
+    # catch if f0 is zero
+    if any(f0)==0:
+        f0=np.ones(f0.size)*100e6
     sI=np.array(t['I'])
     SpecI=np.array(t['SpectralIndex'][:,0])
     major=asec_to_rad(np.array(t['MajorAxis']))
@@ -64,11 +69,14 @@ def read_skymodel(skymodel,sagecalsky,sagecalcluster,admm_rho='base.rho'):
 if __name__ == '__main__':
   # Convert sky model from DP3 to sagecal
   # Also creates cluster file (patch) and ADMM regularization rho
+  # Clusters are numberd starting from start_cluster_id,+1,+2,..
   import sys
   argc=len(sys.argv)
   if argc==4:
     read_skymodel(sys.argv[1],sys.argv[2],sys.argv[3])
   elif argc==5:
     read_skymodel(sys.argv[1],sys.argv[2],sys.argv[3],sys.argv[4])
+  elif argc==6:
+    read_skymodel(sys.argv[1],sys.argv[2],sys.argv[3],sys.argv[4],int(sys.argv[5]))
   else:
-    print("Usage: %s skymodel sky.txt cluster.txt rho.txt"%sys.argv[0])
+    print("Usage: %s skymodel sky.txt cluster.txt rho.txt start_cluster_id"%sys.argv[0])

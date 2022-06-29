@@ -1,6 +1,5 @@
 import numpy as np
 import torch
-from torch.autograd import Variable
 import torch.autograd.functional
 import time
 # (try to) use a GPU for computation?
