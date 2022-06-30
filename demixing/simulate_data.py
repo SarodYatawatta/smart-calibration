@@ -2,9 +2,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import sys
+import sys,os
 # append script path
-sys.path.append('/home/sarod/work/ttorch/smart-calibration/calibration')
+sys.path.append(os.path.relpath('../calibration'))
 
 from generate_data import generate_training_data
 from transformer_models import *

@@ -1,6 +1,6 @@
-import sys
+import sys,os
 # append script path
-sys.path.append('/home/sarod/work/ttorch/smart-calibration/calibration')
+sys.path.append(os.path.relpath('../calibration'))
 from transformer_models import *
 from generate_data import get_info_from_dataset
 

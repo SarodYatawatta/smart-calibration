@@ -1,10 +1,10 @@
 import numpy as np
 import torch
 import torchvision
-import sys
+import sys,os
 # append script path
-sys.path.append('/home/sarod/work/ttorch/smart-calibration/calibration')
-sys.path.append('/home/sarod/work/ttorch/smart-calibration/elasticnet')
+sys.path.append(os.path.relpath('../calibration'))
+sys.path.append(os.path.relpath('../elasticnet'))
 
 
 #########################################################
