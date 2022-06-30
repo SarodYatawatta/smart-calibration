@@ -675,8 +675,8 @@ def get_info_from_dataset(mslist,timesec,Ninf=128):
       tt.putcol('DATA',data)
       tt.close()
       # add extra columns
-      sb.run('python ./addcol.py '+msname+' MODEL_DATA',shell=True)
-      sb.run('python ./addcol.py '+msname+' CORRECTED_DATA',shell=True)
+      add_column(msname,'MODEL_DATA')
+      add_column(msname,'CORRECTED_DATA')
 
 
     # Get target coords
@@ -735,8 +735,8 @@ def get_info_from_dataset(mslist,timesec,Ninf=128):
     Tdelta=10
     Ts=(Tslots+Tdelta-1)//Tdelta
 
-    # calibration, use --oversubscribe if not enough slots are available -A 30
-    sb.run('mpirun -np 3 --oversubscribe '+sagecal_mpi+' -f \'L_SB*.MS\'  -A 3 -P 2 -s sky.txt -c cluster.txt -I DATA -O MODEL_DATA -p zsol -G admm_rho.txt -n 4 -t '+str(Tdelta)+' -V',shell=True)
+    # calibration, use --oversubscribe if not enough slots are available
+    sb.run('mpirun -np 3 --oversubscribe '+sagecal_mpi+' -f \'L_SB*.MS\'  -A 30 -P 2 -s sky.txt -c cluster.txt -I DATA -O MODEL_DATA -p zsol -G admm_rho.txt -n 4 -t '+str(Tdelta)+' -V',shell=True)
  
     #########################################################################
     # Get the ra,dec coords of each cluster for imaging
@@ -807,7 +807,7 @@ def get_info_from_dataset(mslist,timesec,Ninf=128):
        x[ck*Nout:(ck*Nout+Ninf*Ninf)]=np.reshape(np.squeeze(hdu[0].data[0]),(-1),order='F')
        hdu.close()
        imgnorm=np.linalg.norm(x[ck*Nout:(ck*Nout+Ninf*Ninf)])
-       x[ck*Nout:(ck*Nout+Ninf*Ninf)] /= imgnorm
+       x[ck*Nout:(ck*Nout+Ninf*Ninf)] /= (imgnorm + 1e-9)
        # other data
        x[ck*Nout+Ninf*Ninf]=separation[ck]
        x[ck*Nout+Ninf*Ninf+1]=azimuth[ck]
@@ -820,3 +820,18 @@ def get_info_from_dataset(mslist,timesec,Ninf=128):
        x[ck*Nout+Ninf*Ninf+7]=np.log(freqlist[nfreq])
 
     return x
+
+
+## adds an extra column to an MS
+def add_column(msname,colname):
+  tt=ctab.table(msname,readonly=False)
+  cl=tt.getcol('DATA')
+  (nrows,nchans,npols)=cl.shape
+  vl=np.zeros(shape=cl.shape,dtype='complex64')
+  dmi=tt.getdminfo('DATA')
+  dmi['NAME']=colname
+  mkd=ctab.maketabdesc(ctab.makearrcoldesc(colname,shape=np.array(np.zeros([nchans,npols])).shape,valuetype='complex',value=0.))
+  tt.addcols(mkd,dmi)
+  tt.putcol(colname,vl)
+  tt.close()
+
