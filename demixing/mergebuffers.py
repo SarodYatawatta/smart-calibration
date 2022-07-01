@@ -1,4 +1,8 @@
 import numpy as np
+import sys,os
+# append script path
+sys.path.append(os.path.relpath('../calibration'))
+
 from transformer_models import *
 
 #########################################################
@@ -18,8 +22,8 @@ n_heads=K
 input_dims=Ninput*n_heads
 model_dims=Nmodel*n_heads
 
-R=ReplayBuffer(3200,(input_dims,),(K-1,))
-R1=ReplayBuffer(2400,(input_dims,),(K-1,))
+R=ReplayBuffer(6000,(input_dims,),(K-1,))
+R1=ReplayBuffer(4000,(input_dims,),(K-1,))
 R.load_checkpoint()
 R1.load_checkpoint(filename='./simul_data.buffer')
 
