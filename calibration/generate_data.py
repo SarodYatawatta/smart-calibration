@@ -14,7 +14,10 @@ import astropy.time as atime
 makems_binary='/home/sarod/scratch/software/bin/makems'
 sagecal='/home/sarod/work/DIRAC/sagecal/build/dist/bin/sagecal_gpu'
 sagecal_mpi='/home/sarod/work/DIRAC/sagecal/build/dist/bin/sagecal-mpi_gpu'
+# imagers:
 excon='/home/sarod/work/excon/src/MS/excon'
+# or, set either of one to NULL to use the other
+WSCLEAN='/usr/bin/wsclean'
 # DP3 with necessary environment settings
 DP3='export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/tmp/test/lib && export OPENBLAS_NUM_THREADS=1 && /home/sarod/scratch/software/bin/DP3'
 # LINC script to download target sky
@@ -788,7 +791,10 @@ def get_info_from_dataset(mslist,timesec,Ninf=128):
       for ck in range(K):
         proc1=sb.Popen('python writecorr.py '+MS+' fff_'+str(ck),shell=True)
         proc1.wait()
-        proc1=sb.Popen(excon+' -x 0 -c CORRECTED_DATA -d '+str(Ninf)+' -p 20 -F 1e5,1e5,1e5,1e5 -Q inf_'+str(ck)+' -m '+MS+' -A /dev/shm/A -B /dev/shm/B -C /dev/shm/C > /dev/null',shell=True)
+        if WSCLEAN is not None:
+          proc1=sb.Popen(WSCLEAN+' -data-column CORRECTED_DATA -size '+str(Ninf)+' '+str(Ninf)+' -scale 20asec -niter 0 -name '+MS+'_'+str(ck)+' '+MS,shell=True)
+        else:
+          proc1=sb.Popen(excon+' -x 0 -c CORRECTED_DATA -d '+str(Ninf)+' -p 20 -F 1e5,1e5,1e5,1e5 -Q inf_'+str(ck)+' -m '+MS+' -A /dev/shm/A -B /dev/shm/B -C /dev/shm/C > /dev/null',shell=True)
         proc1.wait()
     
     print('cluster sep az el ||J|| ||C|| |Inf| LLR')
@@ -803,7 +809,10 @@ def get_info_from_dataset(mslist,timesec,Ninf=128):
     nfreq=0
     MS='L_SB'+str(nfreq)+'.MS'
     for ck in range(K):
-       hdu=fits.open(MS+'_inf_'+str(ck)+'_I.fits')
+       if WSCLEAN is not None:
+         hdu=fits.open(MS+'_'+str(ck)+'-image.fits')
+       else:
+         hdu=fits.open(MS+'_inf_'+str(ck)+'_I.fits')
        x[ck*Nout:(ck*Nout+Ninf*Ninf)]=np.reshape(np.squeeze(hdu[0].data[0]),(-1),order='F')
        hdu.close()
        imgnorm=np.linalg.norm(x[ck*Nout:(ck*Nout+Ninf*Ninf)])
