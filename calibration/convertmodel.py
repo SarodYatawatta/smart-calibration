@@ -13,7 +13,7 @@ def dec_to_rad(degval):
 def asec_to_rad(asec):
   return asec/(60*60)*math.pi/180.0
 
-def read_skymodel(skymodel,sagecalsky,sagecalcluster,admm_rho='base.rho',start_cluster=1):
+def read_skymodel(skymodel,sagecalsky,sagecalcluster,admm_rho='base.rho',start_cluster=1,num_patches=0):
   outsky=open(sagecalsky,'w+')
   outcluster=open(sagecalcluster,'w+')
   outrho=open(admm_rho,'w+')
@@ -22,6 +22,9 @@ def read_skymodel(skymodel,sagecalsky,sagecalcluster,admm_rho='base.rho',start_c
   outcluster.write('### Cluster file\n')
   s=lsmtool.load(skymodel)
   patches=s.getPatchNames()
+  if num_patches>0:
+      assert(num_patches<=len(patches))
+      patches=patches[:num_patches]
   # cluster '1' is the target, so when converting A-Team, 
   # give start_cluster number as an input argument
   cluster_id=start_cluster 
@@ -70,6 +73,7 @@ if __name__ == '__main__':
   # Convert sky model from DP3 to sagecal
   # Also creates cluster file (patch) and ADMM regularization rho
   # Clusters are numberd starting from start_cluster_id,+1,+2,..
+  # num_patches=0, select all patches, otherwise, select the first 'num_patches'
   import sys
   argc=len(sys.argv)
   if argc==4:
@@ -78,5 +82,7 @@ if __name__ == '__main__':
     read_skymodel(sys.argv[1],sys.argv[2],sys.argv[3],sys.argv[4])
   elif argc==6:
     read_skymodel(sys.argv[1],sys.argv[2],sys.argv[3],sys.argv[4],int(sys.argv[5]))
+  elif argc==7:
+    read_skymodel(sys.argv[1],sys.argv[2],sys.argv[3],sys.argv[4],int(sys.argv[5]),int(sys.argv[6]))
   else:
-    print("Usage: %s skymodel sky.txt cluster.txt rho.txt start_cluster_id"%sys.argv[0])
+    print("Usage: %s skymodel sky.txt cluster.txt rho.txt start_cluster_id num_patchs"%sys.argv[0])
