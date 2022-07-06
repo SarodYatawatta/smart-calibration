@@ -840,7 +840,31 @@ def log_likelihood_ratio(R,C,J,N):
     LLR[k] /= sigma2+EPS
   return LLR
 
+# parse cluster file, store them to re-generate
+# reduced sky models later (only by re-generating cluster file)
+# return dict: Clus (clusters), key is position in cluster file, not cluster id
+def readcluster(clusterfile):
+  fh=open(clusterfile,'r')
+  fullset=fh.readlines()
+  fh.close()
 
+  # dict to include all clusters
+  Clus={}
+  # determine number of clusters
+  ci=0
+  for cl in fullset:
+   if (not cl.startswith('#')) and len(cl)>1:
+     ci +=1
+  K=ci
+
+  ck=0 # cluster order id
+  for cl in fullset:
+   if (not cl.startswith('#')) and len(cl)>1:
+     cl1=cl.split()
+     Clus[ck]=cl
+     ck+=1
+
+  return Clus
 
 #readsolutions('L_SB1.MS.solutions')
 #print(radectolm(1,0.2,0.4,0.3))

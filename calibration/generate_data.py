@@ -62,7 +62,7 @@ def generate_training_data(Ninf=128):
     a_team_dirs=[(6.123273, 1.026748), (5.233838, 0.710912), (4.412048, 0.087195), (1.459697, 0.383912), (3.276019, 0.216299)]
     close_to_Ateam=-1 # 0,...4 will select one of the above
     distance_to_Ateam=1 # max distance, in degrees
-    
+
     valid_field=False
     # loop till we find a valid direction (above horizon) and epoch
     while not valid_field:
@@ -844,3 +844,388 @@ def add_column(msname,colname):
   tt.putcol(colname,vl)
   tt.close()
 
+# Simulate a LOFAR observation, and sky models
+# Nf: number of frequencies
+# returns: separation,azimuth,elevation (rad): Kx1 arrays
+#  freq (Hz): lowest freq
+def simulate_data(Nf=3,Tdelta=10):
+    # K: directions for demixing + target
+    K=6 # total must match = (A-team clusters + 1)
+    do_images=False
+    do_solutions=True
+    # HBA or LBA ?
+    hba=(np.random.choice([0,1])==1)
+
+    # epoch coordinate UTC
+    mydm=measures()
+    x='3826896.235129999928176m'
+    y='460979.4546659999759868m'
+    z='5064658.20299999974668m'
+    mypos=mydm.position('ITRF',x,y,z)
+
+    # Full time duration (slots), multiply with -t Tdelta option for full duration
+    Ts=2
+    # integration time (s)
+    Tint=1
+
+    # approx A-Team coordinates, for generating targets close to one
+    # CasA, CygA, HerA, TauA, VirA
+    a_team_dirs=[(6.123273, 1.026748), (5.233838, 0.710912), (4.412048, 0.087195), (1.459697, 0.383912), (3.276019, 0.216299)]
+    close_to_Ateam=-1 # 0,...4 will select one of the above
+    distance_to_Ateam=1 # max distance, in degrees
+
+    valid_field=False
+    # loop till we find a valid direction (above horizon) and epoch
+    while not valid_field:
+      # field coords (rad)
+      if close_to_Ateam==-1:
+        ra0=np.random.rand(1)*math.pi*2
+        dec0=np.random.rand(1)*math.pi/2
+        ra0=ra0[0]
+        dec0=dec0[0]
+      else: # generate direction close to given A-Team source
+        # random distance in rad
+        distance_from_here=np.random.rand(1)*distance_to_Ateam/180*math.pi
+        ra0=a_team_dirs[close_to_Ateam][0]+distance_from_here[0]
+        distance_from_here=np.random.rand(1)*distance_to_Ateam/180*math.pi
+        dec0=a_team_dirs[close_to_Ateam][1]+distance_from_here[0]
+
+      myra=quantity(str(ra0)+'rad')
+      mydec=quantity(str(dec0)+'rad')
+      mydir=mydm.direction('J2000',myra,mydec)
+      t0=time.mktime(time.gmtime())+np.random.rand()*24*3600.0
+      mytime=mydm.epoch('UTC',str(t0)+'s')
+      mydm.doframe(mytime)
+      mydm.doframe(mypos)
+      # check elevation and field is above horizon, 5 deg above
+      azel=mydm.measure(mydir,'AZEL')
+      myel=azel['m1']['value']/math.pi*180
+
+      # calculate separations
+      separations=calculate_separation_vec(a_team_dirs,ra0,dec0,mydm)
+
+      #if myel>5.0:
+      #    valid_field=True
+      if ((separations[2]<=60 and separations[3]<=60) or
+         (separations[3]<=60 and separations[4]<=60)) and myel>3.0:
+          valid_field=True
+
+    # now we have a valid ra0,dec0 and t0 tuple
+    strtime=time.strftime('%Y/%m/%d/%H:%M:%S',time.gmtime(t0))
+
+    hh,mm,ss=radToRA(ra0)
+    dd,dmm,dss=radToDec(dec0)
+
+    if hba:
+      atable='HBA/ANTENNA'
+    else:
+      atable='LBA/ANTENNA'
+
+    # get antennas
+    tt=ctab.table(atable,readonly=True)
+    N=tt.nrows()
+    tt.close()
+    # baselines
+    B=N*(N-1)//2
+
+    # generate makems config
+    # need to have both makems.parset and makems.cfg present
+    makems_parset='makems.parset'
+    msout='test.MS'
+    ff=open(makems_parset,'w+')
+    ff.write('NParts=1\n'
+      +'NBands=1\n'
+      +'NFrequencies=1\n'
+      +'StartFreq=150e6\n' # this will be reset later
+      +'StepFreq=180e3\n'
+      +'StartTime='+strtime+'\n'
+      +'StepTime='+str(Tint)+'\n'
+      +'NTimes='+str(Ts*Tdelta)+'\n'
+      +'RightAscension='+str(hh)+':'+str(mm)+':'+str(int(ss))+'\n'
+      +'Declination='+str(dd)+'.'+str(dmm)+'.'+str(int(dss))+'\n'
+      +'WriteAutoCorr=T\n'
+      +'AntennaTableName=./'+str(atable)+'\n'
+      +'MSName='+str(msout)+'\n'
+    )
+    ff.close()
+    sb.run('cp '+makems_parset+' makems.cfg',shell=True)
+    sb.run(makems_binary,shell=True)
+
+    # output will be msout_p0
+    msoutp0=msout+'_p0'
+
+    sb.run('rsync -a ./LBA/FIELD '+msoutp0+'/',shell=True)
+    # update FIELD table
+    field=ctab.table(msoutp0+'/FIELD',readonly=False)
+    delay_dir=field.getcol('DELAY_DIR')
+    phase_dir=field.getcol('PHASE_DIR')
+    ref_dir=field.getcol('REFERENCE_DIR')
+    lof_dir=field.getcol('LOFAR_TILE_BEAM_DIR')
+
+    ci=0
+    delay_dir[ci][0][0]=ra0
+    delay_dir[ci][0][1]=dec0
+    phase_dir[ci][0][0]=ra0
+    phase_dir[ci][0][1]=dec0
+    ref_dir[ci][0][0]=ra0
+    ref_dir[ci][0][1]=dec0
+    lof_dir[ci][0]=ra0
+    lof_dir[ci][1]=dec0
+
+    field.putcol('DELAY_DIR',delay_dir)
+    field.putcol('PHASE_DIR',phase_dir)
+    field.putcol('REFERENCE_DIR',ref_dir)
+    field.putcol('LOFAR_TILE_BEAM_DIR',lof_dir)
+    field.close()
+
+    if hba:
+      sb.run('rsync -a ./HBA/LOFAR_ANTENNA_FIELD '+msoutp0+'/',shell=True)
+    else:
+      sb.run('rsync -a ./LBA/LOFAR_ANTENNA_FIELD '+msoutp0+'/',shell=True)
+
+    # remove old files
+    sb.run('rm -rf L_SB*.MS L_SB*fits',shell=True)
+    # frequencies
+    if hba:
+        flow=110+np.random.rand()*(180-110)/2
+        fhigh=110+(180-110)/2+np.random.rand()*(180-110)/2
+    else:
+        flow=30+np.random.rand()*(70-30)/2
+        fhigh=30+(70-30)/2+np.random.rand()*(70-30)/2
+    freqlist=np.linspace(flow,fhigh,num=Nf)*1e6
+
+    f0=np.mean(freqlist)
+
+    for ci in range(Nf):
+        MS='L_SB'+str(ci)+'.MS'
+        sb.run('rsync -a '+msoutp0+'/ '+MS,shell=True)
+        sb.run('python changefreq.py '+MS+' '+str(freqlist[ci]),shell=True)
+
+    #########################################################################
+    # sky model/error simulation
+
+    # simulate target field and outlier, the remaining clusters are part of A-team
+    # Sources (directions) used in calibration:
+    # first one for center, 1,2,3,.. for outlier sources
+    # and last one for weak sources (so minimum 2), 3 will be the weak sources
+
+    # weak sources in background
+    # point
+    M=350
+    # extended
+    M1=120
+    # number of sources at the center, included in calibration
+    Kc=40
+
+    outskymodel='sky0.txt' # for simulation
+    outskymodel1='sky.txt' # for calibration
+    outcluster='cluster0.txt' # for simulation
+    outcluster1='cluster.txt' # for calibration
+    initialrho='admm_rho.txt' # values for rho, determined analytically
+    ff=open(outskymodel,'w+')
+    ff1=open(outskymodel1,'w+')
+    gg=open(outcluster,'w+')
+    gg1=open(outcluster1,'w+')
+    arh=open(initialrho,'w+')
+
+
+    # generate random sources in [-lmin,lmin] at the phase center
+    lmin=0.2
+    l=(np.random.rand(Kc)-0.5)*lmin
+    m=(np.random.rand(Kc)-0.5)*lmin
+    n=(np.sqrt(1-np.power(l,2)-np.power(m,2))-1)
+    # intensities, power law, exponent -2 
+    alpha=-2.0
+    a=0.1
+    b=200.0#  flux in [0.1 200]
+    sIuniform=np.random.rand(Kc)
+    sI=np.power(np.power(a,(alpha+1))+sIuniform*(np.power(b,(alpha+1))-np.power(a,(alpha+1))),(1/(alpha+1)))
+    # spectral indices
+    sP=np.random.randn(Kc)
+
+    #%%%%%%%%% weak sources
+    a=0.01
+    b=0.5#  flux in [0.01 0.5]
+    alpha=-2.0
+    nn=np.random.rand(M)
+    sII=np.power(np.power(a,(alpha+1))+nn*(np.power(b,(alpha+1))-np.power(a,(alpha+1))),(1/(alpha+1)))
+    # for a FOV 30.0x30.0,
+    l0=(np.random.rand(M)-0.5)*25.5*math.pi/180
+    m0=(np.random.rand(M)-0.5)*25.5*math.pi/180
+    n0=(np.sqrt(1-np.power(l0,2)-np.power(m0,2))-1)
+
+    # extended sources
+    # name h m s d m s I Q U V spectral_index1 spectral_index2 spectral_index3 RM extent_X(rad) extent_Y(rad) pos_angle(rad) freq0
+    a=0.01
+    b=0.5 # flux in [0.01 0.5]
+    alpha=-2.0
+    nn=np.random.rand(M1)
+    sI1=np.power(np.power(a,(alpha+1))+nn*(np.power(b,(alpha+1))-np.power(a,(alpha+1))),(1/(alpha+1)))
+    # for a FOV 30.0x30.0,
+    l1=(np.random.rand(M1)-0.5)*25.5*math.pi/180
+    m1=(np.random.rand(M1)-0.5)*25.5*math.pi/180
+    n1=(np.sqrt(1-np.power(l1,2)-np.power(m1,2))-1)
+    eX=(np.random.rand(M1)-0.5)*0.5*math.pi/180
+    eY=(np.random.rand(M1)-0.5)*0.5*math.pi/180
+    eP=(np.random.rand(M1)-0.5)*180*math.pi/180
+
+
+    # output sources for centre cluster
+    # format: P0 19 59 47.0 40 40 44.0 1.0 0 0 0 -1 0 0 0 0 0 0 1000000.0
+    gg.write('1 1')
+    gg1.write('1 1') # do subtract target as well
+    arh.write('# format\n')
+    arh.write('# cluster_id hybrid admm_rho\n')
+    arh.write('1 1 '+str(sum(sI)*10/Kc)+'\n')
+    arh.close()
+
+    for cj in range(Kc):
+     ra,dec=lmtoradec(l[cj],m[cj],ra0,dec0)
+     hh,mm,ss=radToRA(ra)
+     dd,dmm,dss=radToDec(dec)
+     sname='PC'+str(cj)
+     ff.write(sname+' '+str(hh)+' '+str(mm)+' '+str(int(ss))+' '+str(dd)+' '+str(dmm)+' '+str(int(dss))+' '+str(sI[cj])+' 0 0 0 '+str(sP[cj])+' 0 0 0 0 0 0 '+str(f0)+'\n')
+     ff1.write(sname+' '+str(hh)+' '+str(mm)+' '+str(int(ss))+' '+str(dd)+' '+str(dmm)+' '+str(int(dss))+' '+str(sI[cj])+' 0 0 0 '+str(sP[cj])+' 0 0 0 0 0 0 '+str(f0)+'\n')
+     gg.write(' '+sname)
+     gg1.write(' '+sname)
+
+
+    gg.write('\n')
+    gg1.write('\n')
+    # weak sources are grouped into one cluster
+    ff.write('# weak sources\n')
+    gg.write('# cluster for weak sources\n')
+    gg.write(str(K+1)+' 1 ')
+    for cj in range(M):
+     ra,dec=lmtoradec(l0[cj],m0[cj],ra0,dec0)
+     hh,mm,ss=radToRA(ra)
+     dd,dmm,dss=radToDec(dec)
+     sname='PW'+str(cj)
+     ff.write(sname+' '+str(hh)+' '+str(mm)+' '+str(int(ss))+' '+str(dd)+' '+str(dmm)+' '+str(int(dss))+' '+str(sII[cj])+' 0 0 0 0 0 0 0 0 0 0 '+str(f0)+'\n')
+     gg.write(str(sname)+' ')
+
+    # Gaussians
+    for cj in range(M1):
+     ra,dec=lmtoradec(l1[cj],m1[cj],ra0,dec0)
+     hh,mm,ss=radToRA(ra)
+     dd,dmm,dss=radToDec(dec)
+     sname='GW'+str(cj)
+     ff.write(sname+' '+str(hh)+' '+str(mm)+' '+str(int(ss))+' '+str(dd)+' '+str(dmm)+' '+str(int(dss))+' '+str(sI1[cj])+' 0 0 0 0 0 0 0 '+str(eX[cj])+' '+str(eY[cj])+' '+str(eP[cj])+' '+str(f0)+'\n')
+     gg.write(str(sname)+' ')
+
+    gg.write('\n')
+
+    ff.close()
+    ff1.close()
+    gg.close()
+    gg1.close()
+
+    # How to convert DP3 skymodel:
+    # python ./convertmodel.py ../A-Team_lowres.skymodel base.sky base.cluster base.rho start_cluster_id
+    # python ./convertmodel.py ../A-Team_lowres-update.skymodel base.sky base.cluster base.rho start_cluster_id
+    sb.run('cp '+outskymodel+' tmp.sky',shell=True)
+    sb.run('cat base.sky > '+outskymodel,shell=True)
+    sb.run('cat tmp.sky >> '+outskymodel,shell=True)
+    sb.run('cp '+outskymodel1+' tmp.sky',shell=True)
+    sb.run('cat base.sky > '+outskymodel1,shell=True)
+    sb.run('cat tmp.sky >> '+outskymodel1,shell=True)
+    sb.run('cp '+outcluster+' tmp.cluster',shell=True)
+    sb.run('cat base.cluster > '+outcluster,shell=True)
+    sb.run('cat tmp.cluster >> '+outcluster,shell=True)
+    sb.run('cp '+outcluster1+' tmp.cluster',shell=True)
+    sb.run('cat base.cluster > '+outcluster1,shell=True)
+    sb.run('cat tmp.cluster >> '+outcluster1,shell=True)
+    sb.run('cp '+initialrho+' tmp.rho',shell=True)
+    sb.run('cat base.rho > '+initialrho,shell=True)
+    sb.run('cat tmp.rho >> '+initialrho,shell=True)
+
+    separation,azimuth,elevation=calculate_separation(outskymodel1,outcluster1,ra0,dec0,mydm)
+    #########################################################################
+    # simulate errors for K directions, attenuate those errors
+    # target = column K-1
+    # outlier = columns 0..K-2
+    if do_solutions:
+       # storage for full solutions
+       gs=np.zeros((K,8*N*Ts,Nf),dtype=np.float32)
+
+       # normalized freqency
+       norm_f=(freqlist-f0)/f0
+
+       for ck in range(K):
+         # attenuate random seed
+         gs[ck,0:8*N,0]=np.random.randn(8*N)*0.01
+         # also add 1 to J_00 and J_22 (real part) : every 0 and 6 value
+         gs[ck,0:8*N:8] +=1.
+         gs[ck,6:8*N:8] +=1.
+    
+         # generate a random polynomial over freq
+         for ci in range(8*N):
+           alpha=gs[ck,ci,0]
+           beta=np.random.randn(3)
+           # output=alpha*(b0+b1*f+b2*f^2)
+           freqpol=alpha*(beta[0]+beta[1]*norm_f+beta[2]*np.power(norm_f,2))
+           gs[ck,ci]=freqpol
+      
+       # now the 1-st timeslot solutions for all freqs are generated
+       # copy this to other timeslots
+       for ck in range(K):
+         for ct in range(1,Ts):
+           gs[ck,ct*8*N:(ct+1)*8*N]=gs[ck,0:8*N]
+    
+       # now iterate over 8N for all timeslots using similar polynomials
+       timerange=np.arange(0,Ts)/Ts
+       for ck in range(K):
+         for cn in range(8*N):
+            beta=np.random.randn(4)
+            beta=beta/np.linalg.norm(beta)
+            # add DC term to time poly
+            timepol=1+beta[0]+beta[1]*np.cos(timerange*beta[2]+beta[3])
+            for cf in range(Nf):
+              gs[ck,cn:8*N*Ts:8*N,cf] *=timepol
+
+       # open all files
+       flist={}
+       for ci in range(Nf):
+         MS='L_SB'+str(ci)+'.MS'
+         flist[ci]=open(MS+'.S.solutions','w+')
+    
+         flist[ci].write('#solution file created by simulate.py for SAGECal\n')
+         flist[ci].write('#freq(MHz) bandwidth(MHz) time_interval(min) stations clusters effective_clusters\n')
+         flist[ci].write(str(freqlist[ci]/1e6)+' 0.183105 20.027802 '+str(N)+' '+str(K+1)+' '+str(K+1)+'\n')
+
+
+       for ct in range(Ts):
+         for ci in range(8*N):
+           stat=ci//8
+           offset=ci-8*stat
+           for cf in range(Nf):
+              flist[cf].write(str(ci)+' ')
+              for ck in range(K):
+               flist[cf].write(str(gs[ck,ct*8*N+ci,cf])+' ')
+              # last column, 1 at 0 and 6, else 0
+              if offset==0 or offset==6:
+               flist[cf].write('1\n')
+              else:
+               flist[cf].write('0\n')
+
+       for ci in range(Nf):
+         flist[ci].close()
+    #########################################################################
+    # signal to noise ratio: in the range 0.05 to 0.5
+    SNR=np.random.rand()*(0.5-0.05)+0.05
+    # simulation
+    for ci in range(Nf):
+      MS='L_SB'+str(ci)+'.MS'
+      if do_solutions:
+        sb.run(sagecal+' -d '+MS+' -s sky0.txt -c cluster0.txt -t '+str(Tdelta)+' -O DATA -a 1 -B 2 -E 1 -p '+MS+'.S.solutions',shell=True)
+      else:
+        sb.run(sagecal+' -d '+MS+' -s sky0.txt -c cluster0.txt -t '+str(Tdelta)+' -O DATA -a 1 -B 2 -E 1',shell=True)
+      sb.run('python addnoise.py '+MS+' '+str(SNR),shell=True)
+      if do_images:
+        sb.run(excon+' -m '+MS+' -p 8 -x 2 -c DATA -d 12000 > /dev/null',shell=True)
+
+    # create average images
+    if do_images:
+      sb.run('bash ./calmean.sh \'L_SB*.MS_I*fits\' 1 && python calmean_.py && mv bar.fits data.fits',shell=True)
+
+    return separation,azimuth,elevation,freqlist[0]
