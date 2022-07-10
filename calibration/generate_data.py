@@ -23,6 +23,17 @@ DP3='export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/tmp/test/lib && export OPENBLAS_NU
 # LINC script to download target sky
 LINC_GET_TARGET='/home/sarod/scratch/LINC/scripts/download_skymodel_target.py --Radius 5'
 
+# Spider settings
+#makems_binary='/home/rapthor-syatawatta/bin/makems'
+#sagecal='/home/rapthor-syatawatta/bin/sagecal'
+#sagecal_mpi='/home/rapthor-syatawatta/bin/sagecal-mpi'
+#excon='/home/rapthor-syatawatta/bin/excon'
+
+
+# LOFAR core coords
+X0='3826896.235129999928176m'
+Y0='460979.4546659999759868m'
+Z0='5064658.20299999974668m'
 
 # Simulate a LOFAR observation, and generate training data
 # K: directions for demixing + target
@@ -46,9 +57,9 @@ def generate_training_data(Ninf=128):
     
     # epoch coordinate UTC 
     mydm=measures()
-    x='3826896.235129999928176m'
-    y='460979.4546659999759868m'
-    z='5064658.20299999974668m'
+    x=X0
+    y=Y0
+    z=Z0
     mypos=mydm.position('ITRF',x,y,z)
     
     # Full time duration (slots), multiply with -t Tdelta option for full duration
@@ -706,9 +717,9 @@ def get_info_from_dataset(mslist,timesec,Ninf=128):
 
     # epoch coordinate UTC 
     mydm=measures()
-    x='3826896.235129999928176m'
-    y='460979.4546659999759868m'
-    z='5064658.20299999974668m'
+    x=X0
+    y=Y0
+    z=Z0
     mypos=mydm.position('ITRF',x,y,z)
     mytime=mydm.epoch('UTC',str(t0)+'s')
     mydm.doframe(mytime)
@@ -858,9 +869,9 @@ def simulate_data(Nf=3,Tdelta=10):
 
     # epoch coordinate UTC
     mydm=measures()
-    x='3826896.235129999928176m'
-    y='460979.4546659999759868m'
-    z='5064658.20299999974668m'
+    x=X0
+    y=Y0
+    z=Z0
     mypos=mydm.position('ITRF',x,y,z)
 
     # Full time duration (slots), multiply with -t Tdelta option for full duration
