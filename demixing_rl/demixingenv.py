@@ -108,7 +108,7 @@ class DemixingEnv(gym.Env):
     noise_var=self.std_residual*self.std_residual
     # -AIC ~ -log(residual_sum_sqr) - deg_of_freedom
     # we use normalized residual_sum_sqr, and normalized_deg_freedom
-    reward=math.log(data_var/noise_var)-Kselected
+    reward=math.log(data_var/(noise_var+EPS))-Kselected
     influence_std=infdata.std()/100 # arbitray scaling, because influence is alreade scaled in calculation
     # penalize by influence 
     reward-=influence_std*influence_std
