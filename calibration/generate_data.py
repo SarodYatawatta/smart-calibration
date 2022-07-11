@@ -74,11 +74,17 @@ def generate_training_data(Ninf=128):
     close_to_Ateam=-1 # 0,...4 will select one of the above
     distance_to_Ateam=1 # max distance, in degrees
 
+    # strategy for sky model generation
+    # 0: no special criteria (except target is above horizon)
+    # 1: target has an outlier (== close_to_Ateam) at a distance (<= distance_to_Ateam)
+    # 2: at least 2 outliers sources (except CasA/CygA) are close by
+    sky_model_gen_strat=1
+
     valid_field=False
     # loop till we find a valid direction (above horizon) and epoch
     while not valid_field:
       # field coords (rad)
-      if close_to_Ateam==-1:
+      if sky_model_gen_strat==0 or close_to_Ateam==-1:
         ra0=np.random.rand(1)*math.pi*2
         dec0=np.random.rand(1)*math.pi/2
         ra0=ra0[0]
@@ -104,11 +110,14 @@ def generate_training_data(Ninf=128):
       # calculate separations
       separations=calculate_separation_vec(a_team_dirs,ra0,dec0,mydm)
 
-      #if myel>5.0:
-      #    valid_field=True
-      if ((separations[2]<=60 and separations[3]<=60) or
+      if sky_model_gen_strat==2:
+        if ((separations[2]<=60 and separations[3]<=60) or
          (separations[3]<=60 and separations[4]<=60)) and myel>3.0:
           valid_field=True
+      else:
+        if myel>3.0:
+          valid_field=True
+
     
     # now we have a valid ra0,dec0 and t0 tuple
     strtime=time.strftime('%Y/%m/%d/%H:%M:%S',time.gmtime(t0))
@@ -885,11 +894,17 @@ def simulate_data(Nf=3,Tdelta=10):
     close_to_Ateam=-1 # 0,...4 will select one of the above
     distance_to_Ateam=1 # max distance, in degrees
 
+    # strategy for sky model generation
+    # 0: no special criteria (except target is above horizon)
+    # 1: target has an outlier (== close_to_Ateam) at a distance (<= distance_to_Ateam)
+    # 2: at least 2 outliers sources (except CasA/CygA) are close by
+    sky_model_gen_strat=2
+
     valid_field=False
     # loop till we find a valid direction (above horizon) and epoch
     while not valid_field:
       # field coords (rad)
-      if close_to_Ateam==-1:
+      if sky_model_gen_strat==0 or close_to_Ateam==-1:
         ra0=np.random.rand(1)*math.pi*2
         dec0=np.random.rand(1)*math.pi/2
         ra0=ra0[0]
@@ -915,11 +930,14 @@ def simulate_data(Nf=3,Tdelta=10):
       # calculate separations
       separations=calculate_separation_vec(a_team_dirs,ra0,dec0,mydm)
 
-      #if myel>5.0:
-      #    valid_field=True
-      if ((separations[2]<=60 and separations[3]<=60) or
+      if sky_model_gen_strat==2:
+        if ((separations[2]<=60 and separations[3]<=60) or
          (separations[3]<=60 and separations[4]<=60)) and myel>3.0:
           valid_field=True
+      else:
+        if myel>3.0:
+          valid_field=True
+
 
     # now we have a valid ra0,dec0 and t0 tuple
     strtime=time.strftime('%Y/%m/%d/%H:%M:%S',time.gmtime(t0))
