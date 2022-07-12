@@ -68,6 +68,8 @@ class DemixingEnv(gym.Env):
     # output ADMM rho
     self.out_admm_rho='./admm_rho_epi.txt'
     self.rho=np.ones(self.K,dtype=np.float32)
+    # cluster id
+    self.rho_id=np.ones(self.K,dtype=int)
 
     # shell script and command names
     self.cmd_calc_influence='./doinfluence.sh > influence.out'
@@ -177,6 +179,8 @@ class DemixingEnv(gym.Env):
              curline1=curline.split()
              # id hybrid rho
              self.rho[ci]=float(curline1[2])
+             self.rho_id[ci]=int(curline1[0])
+             # ignore hybrid parameter (==1)
              ci +=1
 
   def output_rho_(self):
@@ -184,10 +188,8 @@ class DemixingEnv(gym.Env):
     fh=open(self.out_admm_rho,'w+')
     fh.write('## format\n')
     fh.write('## cluster_id hybrid admm_rho\n')
-    ck=1
     for ci in self.clus_id:
-      fh.write(str(ck)+' '+str(1)+' '+str(self.rho[ci])+'\n')
-      ck+=1
+      fh.write(str(self.rho_id[ci])+' '+str(1)+' '+str(self.rho[ci])+'\n')
     fh.close()
 
   def render(self, mode='human'):
