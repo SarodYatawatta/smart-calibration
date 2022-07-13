@@ -546,8 +546,9 @@ class DemixingAgent():
           mu=T.tensor(np.random.normal(scale=self.noise, size=(self.n_actions,))).to(mydevice)
         else:
           self.actor.eval() # to disable batchnorm
-          state = T.tensor([observation['infmap']],dtype=T.float32).to(mydevice)
-          state_sky = T.tensor([observation['metadata']],dtype=T.float32).to(mydevice)
+          state = T.tensor(observation['infmap'].astype(np.float32),dtype=T.float32).to(mydevice)
+          state = state[None,]
+          state_sky = T.tensor(np.array([observation['metadata']]),dtype=T.float32).to(mydevice)
           mu = self.actor.forward(state,state_sky).to(mydevice)
 
         mu_prime = mu + T.tensor(np.random.normal(scale=self.noise,size=(self.n_actions,)),

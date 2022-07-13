@@ -85,7 +85,7 @@ class DemixingEnv(gym.Env):
     rho =action*(HIGH-LOW)/2+(HIGH+LOW)/2
     # find indices of selected directions
     indices=np.where(rho>0.5)
-    self.clus_id=indices[0].tolist()
+    self.clus_id=np.unique(indices[0]).tolist()
     self.clus_id.append(self.K-1)
     Kselected=len(self.clus_id)
     # create cluster file clusters based on clus_id indices
