@@ -45,10 +45,10 @@ class DemixingEnv(gym.Env):
     # actions: 0,1,..,K-2 : action (K-1)x1 each in [0,1]
     self.action_space = spaces.Box(low=np.zeros((self.K-1,1))*LOW,high=np.ones((self.K-1,1))*HIGH,dtype=np.float32)
     # observation (state space): residual and influence maps
-    # metadata: separation,azimuth,elevation,frequency,
+    # metadata: separation,azimuth,elevation (K values),frequency,n_stations
     self.observation_space = spaces.Dict({
        'infmap': spaces.Box(low=-np.inf,high=np.inf,shape=(Ninf,Ninf),dtype=np.float32),
-       'metadata': spaces.Box(low=-np.inf,high=np.inf,shape=(3*self.K+1,1),dtype=np.float32)
+       'metadata': spaces.Box(low=-np.inf,high=np.inf,shape=(3*self.K+2,1),dtype=np.float32)
        })
     # frequencies for the simulation
     self.Nf=Nf
@@ -77,7 +77,8 @@ class DemixingEnv(gym.Env):
     # standard deviation of target map (raw data and residual)
     self.std_data=0
     self.std_residual=0
-    self.metadata=np.zeros(3*self.K+1)
+    self.metadata=np.zeros(3*self.K+2,dtype=np.float32)
+    self.N=1
 
   def step(self, action):
     done=False # make sure to return True at some point
@@ -98,6 +99,7 @@ class DemixingEnv(gym.Env):
     sb.run(self.cmd_calc_influence,shell=True)
     hdul = fits.open('./influenceI.fits')
     infdata=hdul[0].data[0,:,:,:]
+    infdata=infdata.astype(np.float32)
     hdul.close()
     observation={
       'infmap': infdata,
@@ -108,19 +110,24 @@ class DemixingEnv(gym.Env):
     # reward ~ 1/(noise (var) reduction) /(clusters calibrated)
     data_var=self.std_data*self.std_data
     noise_var=self.std_residual*self.std_residual
-    # -AIC ~ -log(residual_sum_sqr) - deg_of_freedom
-    # we use normalized residual_sum_sqr, and normalized_deg_freedom
-    reward=math.log(data_var/(noise_var+EPS))-Kselected
+    # AIC = -log(likelihood) + 2 deg_of_freedom
+    # log(likelihood) ~ (normalized residual_sum_sqr)x baselines, 
+    # deg_of_freeedom ~ n_stations x n_directions
+    # so AIC ~ n_stations^2 x normalized_residual + n_stations x n_directions
+    # use -AIC as reward
+    reward=-self.N*self.N*noise_var/(data_var+EPS)-Kselected*self.N
     influence_std=infdata.std()/100 # arbitray scaling, because influence is alreade scaled in calculation
     # penalize by influence 
     reward-=influence_std*influence_std
-    print('STD %f %f Inf %f K %d reward %f'%(data_var,noise_var,influence_std,Kselected,reward))
+    print('STD %f %f Inf %f K %d N %d reward %f'%(data_var,noise_var,influence_std,Kselected,self.N,reward))
     info={}
     return observation, reward, done, info
 
   def reset(self):
     # run input simulations
-    separation,azimuth,elevation,freq=simulate_data(Nf=self.Nf)
+    separation,azimuth,elevation,freq,N=simulate_data(Nf=self.Nf)
+    # remember stations
+    self.N=N
     # read full cluster
     self.Clus=readcluster(self.cluster_full)
     self.initialize_rho_()
@@ -135,14 +142,16 @@ class DemixingEnv(gym.Env):
     self.std_data=self.make_images_(col='DATA')
     self.std_residual=self.make_images_(col='MODEL_DATA')
     # concatenate metadata
-    metadata=np.zeros(3*self.K+1)
+    metadata=np.zeros(3*self.K+2,dtype=np.float32)
     metadata[:self.K]=separation
     metadata[self.K:2*self.K]=azimuth
     metadata[2*self.K:3*self.K]=elevation
-    metadata[-1]=freq
+    metadata[-2]=freq
+    metadata[-1]=N
     self.metadata=metadata
     hdul = fits.open('./influenceI.fits')
     infdata=hdul[0].data[0,:,:,:]
+    infdata=infdata.astype(np.float32)
     hdul.close()
     observation={
       'infmap': infdata,

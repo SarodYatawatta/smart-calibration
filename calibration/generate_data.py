@@ -1257,4 +1257,4 @@ def simulate_data(Nf=3,Tdelta=10):
     if do_images:
       sb.run('bash ./calmean.sh \'L_SB*.MS_I*fits\' 1 && python calmean_.py && mv bar.fits data.fits',shell=True)
 
-    return separation,azimuth,elevation,freqlist[0]
+    return separation,azimuth,elevation,freqlist[0],N
