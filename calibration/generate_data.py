@@ -35,6 +35,69 @@ X0='3826896.235129999928176m'
 Y0='460979.4546659999759868m'
 Z0='5064658.20299999974668m'
 
+# find a valid target direction
+# the strategy for sky model generation: sky_model_gen_strat
+# 0: no special criteria (except target is above horizon)
+# 1: target has an outlier (== close_to_Ateam) at a distance (<= distance_to_Ateam)
+# 2: at least 2 outliers sources (except CasA/CygA) are close by
+# output :ra0,dec0,t0
+def find_valid_target(sky_model_gen_strat=0):
+    # epoch coordinate UTC 
+    mydm=measures()
+    x=X0
+    y=Y0
+    z=Z0
+    mypos=mydm.position('ITRF',x,y,z)
+    # approx A-Team coordinates, for generating targets close to one
+    # CasA, CygA, HerA, TauA, VirA
+    a_team_dirs=[(6.123273, 1.026748), (5.233838, 0.710912), (4.412048, 0.087195), (1.459697, 0.383912), (3.276019, 0.216299)]
+    if sky_model_gen_strat==2:
+      close_to_Ateam=-1
+    else:
+      close_to_Ateam=np.random.randint(len(a_team_dirs)) # 0,...4 will select one of the above
+    distance_to_Ateam=1 # max distance of an Ateam source, in degrees
+
+    low_el=3 # lowest elevation for a target
+    valid_field=False
+    # loop till we find a valid direction (above horizon) and epoch
+    while not valid_field:
+      # field coords (rad)
+      if sky_model_gen_strat==0 or sky_model_gen_strat==2:
+        ra0=np.random.rand(1)*math.pi*2
+        dec0=np.random.rand(1)*math.pi/2
+        ra0=ra0[0]
+        dec0=dec0[0]
+      else: # generate direction close to given A-Team source
+        # random distance in rad
+        distance_from_here=np.random.rand(1)*distance_to_Ateam/180*math.pi
+        ra0=a_team_dirs[close_to_Ateam][0]+distance_from_here[0]
+        distance_from_here=np.random.rand(1)*distance_to_Ateam/180*math.pi
+        dec0=a_team_dirs[close_to_Ateam][1]+distance_from_here[0]
+
+      myra=quantity(str(ra0)+'rad')
+      mydec=quantity(str(dec0)+'rad')
+      mydir=mydm.direction('J2000',myra,mydec)
+      t0=time.mktime(time.gmtime())+np.random.rand()*24*3600.0
+      mytime=mydm.epoch('UTC',str(t0)+'s')
+      mydm.doframe(mytime)
+      mydm.doframe(mypos)
+      # check elevation and field is above horizon, low_el deg above
+      azel=mydm.measure(mydir,'AZEL')
+      myel=azel['m1']['value']/math.pi*180
+
+      # calculate separations
+      separations=calculate_separation_vec(a_team_dirs,ra0,dec0,mydm)
+
+      if sky_model_gen_strat==2:
+        if ((separations[2]<=60 and separations[3]<=60) or
+         (separations[3]<=60 and separations[4]<=60)) and myel>low_el:
+          valid_field=True
+      else:
+        if myel>low_el:
+          valid_field=True
+
+    return ra0,dec0,t0
+
 # Simulate a LOFAR observation, and generate training data
 # K: directions for demixing + target
 # input: K values of
@@ -55,69 +118,13 @@ def generate_training_data(Ninf=128):
     # HBA or LBA ?
     hba=(np.random.choice([0,1])==1)
     
-    # epoch coordinate UTC 
-    mydm=measures()
-    x=X0
-    y=Y0
-    z=Z0
-    mypos=mydm.position('ITRF',x,y,z)
-    
     # Full time duration (slots), multiply with -t Tdelta option for full duration
     Ts=2
     Tdelta=10
     # integration time (s)
     Tint=1
 
-    # approx A-Team coordinates, for generating targets close to one
-    # CasA, CygA, HerA, TauA, VirA
-    a_team_dirs=[(6.123273, 1.026748), (5.233838, 0.710912), (4.412048, 0.087195), (1.459697, 0.383912), (3.276019, 0.216299)]
-    close_to_Ateam=-1 # 0,...4 will select one of the above
-    distance_to_Ateam=1 # max distance, in degrees
-
-    # strategy for sky model generation
-    # 0: no special criteria (except target is above horizon)
-    # 1: target has an outlier (== close_to_Ateam) at a distance (<= distance_to_Ateam)
-    # 2: at least 2 outliers sources (except CasA/CygA) are close by
-    sky_model_gen_strat=1
-
-    valid_field=False
-    # loop till we find a valid direction (above horizon) and epoch
-    while not valid_field:
-      # field coords (rad)
-      if sky_model_gen_strat==0 or close_to_Ateam==-1:
-        ra0=np.random.rand(1)*math.pi*2
-        dec0=np.random.rand(1)*math.pi/2
-        ra0=ra0[0]
-        dec0=dec0[0]
-      else: # generate direction close to given A-Team source
-        # random distance in rad
-        distance_from_here=np.random.rand(1)*distance_to_Ateam/180*math.pi
-        ra0=a_team_dirs[close_to_Ateam][0]+distance_from_here[0]
-        distance_from_here=np.random.rand(1)*distance_to_Ateam/180*math.pi
-        dec0=a_team_dirs[close_to_Ateam][1]+distance_from_here[0]
-
-      myra=quantity(str(ra0)+'rad')
-      mydec=quantity(str(dec0)+'rad')
-      mydir=mydm.direction('J2000',myra,mydec)
-      t0=time.mktime(time.gmtime())+np.random.rand()*24*3600.0
-      mytime=mydm.epoch('UTC',str(t0)+'s')
-      mydm.doframe(mytime)
-      mydm.doframe(mypos)
-      # check elevation and field is above horizon, 5 deg above
-      azel=mydm.measure(mydir,'AZEL')
-      myel=azel['m1']['value']/math.pi*180
-
-      # calculate separations
-      separations=calculate_separation_vec(a_team_dirs,ra0,dec0,mydm)
-
-      if sky_model_gen_strat==2:
-        if ((separations[2]<=60 and separations[3]<=60) or
-         (separations[3]<=60 and separations[4]<=60)) and myel>3.0:
-          valid_field=True
-      else:
-        if myel>3.0:
-          valid_field=True
-
+    ra0,dec0,t0=find_valid_target(sky_model_gen_strat=1)
     
     # now we have a valid ra0,dec0 and t0 tuple
     strtime=time.strftime('%Y/%m/%d/%H:%M:%S',time.gmtime(t0))
@@ -350,6 +357,15 @@ def generate_training_data(Ninf=128):
     sb.run('cat base.rho > '+initialrho,shell=True)
     sb.run('cat tmp.rho >> '+initialrho,shell=True)
     
+    mydm=measures()
+    x=X0
+    y=Y0
+    z=Z0
+    mypos=mydm.position('ITRF',x,y,z)
+    mytime=mydm.epoch('UTC',str(t0)+'s')
+    mydm.doframe(mytime)
+    mydm.doframe(mypos)
+
     # get separation of each cluster from target,
     # negative separation given if a cluster is below horizon
     separation,azimuth,elevation=calculate_separation(outskymodel1,outcluster1,ra0,dec0,mydm)
@@ -867,7 +883,7 @@ def add_column(msname,colname):
 # Simulate a LOFAR observation, and sky models
 # Nf: number of frequencies
 # returns: separation,azimuth,elevation (rad): Kx1 arrays
-#  freq (Hz): lowest freq
+#  freq (Hz): lowest freq, N: number of stations
 def simulate_data(Nf=3,Tdelta=10):
     # K: directions for demixing + target
     K=6 # total must match = (A-team clusters + 1)
@@ -876,68 +892,12 @@ def simulate_data(Nf=3,Tdelta=10):
     # HBA or LBA ?
     hba=(np.random.choice([0,1])==1)
 
-    # epoch coordinate UTC
-    mydm=measures()
-    x=X0
-    y=Y0
-    z=Z0
-    mypos=mydm.position('ITRF',x,y,z)
-
     # Full time duration (slots), multiply with -t Tdelta option for full duration
     Ts=2
     # integration time (s)
     Tint=1
 
-    # approx A-Team coordinates, for generating targets close to one
-    # CasA, CygA, HerA, TauA, VirA
-    a_team_dirs=[(6.123273, 1.026748), (5.233838, 0.710912), (4.412048, 0.087195), (1.459697, 0.383912), (3.276019, 0.216299)]
-    close_to_Ateam=-1 # 0,...4 will select one of the above
-    distance_to_Ateam=1 # max distance, in degrees
-
-    # strategy for sky model generation
-    # 0: no special criteria (except target is above horizon)
-    # 1: target has an outlier (== close_to_Ateam) at a distance (<= distance_to_Ateam)
-    # 2: at least 2 outliers sources (except CasA/CygA) are close by
-    sky_model_gen_strat=2
-
-    valid_field=False
-    # loop till we find a valid direction (above horizon) and epoch
-    while not valid_field:
-      # field coords (rad)
-      if sky_model_gen_strat==0 or close_to_Ateam==-1:
-        ra0=np.random.rand(1)*math.pi*2
-        dec0=np.random.rand(1)*math.pi/2
-        ra0=ra0[0]
-        dec0=dec0[0]
-      else: # generate direction close to given A-Team source
-        # random distance in rad
-        distance_from_here=np.random.rand(1)*distance_to_Ateam/180*math.pi
-        ra0=a_team_dirs[close_to_Ateam][0]+distance_from_here[0]
-        distance_from_here=np.random.rand(1)*distance_to_Ateam/180*math.pi
-        dec0=a_team_dirs[close_to_Ateam][1]+distance_from_here[0]
-
-      myra=quantity(str(ra0)+'rad')
-      mydec=quantity(str(dec0)+'rad')
-      mydir=mydm.direction('J2000',myra,mydec)
-      t0=time.mktime(time.gmtime())+np.random.rand()*24*3600.0
-      mytime=mydm.epoch('UTC',str(t0)+'s')
-      mydm.doframe(mytime)
-      mydm.doframe(mypos)
-      # check elevation and field is above horizon, 5 deg above
-      azel=mydm.measure(mydir,'AZEL')
-      myel=azel['m1']['value']/math.pi*180
-
-      # calculate separations
-      separations=calculate_separation_vec(a_team_dirs,ra0,dec0,mydm)
-
-      if sky_model_gen_strat==2:
-        if ((separations[2]<=60 and separations[3]<=60) or
-         (separations[3]<=60 and separations[4]<=60)) and myel>3.0:
-          valid_field=True
-      else:
-        if myel>3.0:
-          valid_field=True
-
+    ra0,dec0,t0=find_valid_target(sky_model_gen_strat=2)
 
     # now we have a valid ra0,dec0 and t0 tuple
     strtime=time.strftime('%Y/%m/%d/%H:%M:%S',time.gmtime(t0))
@@ -1168,6 +1128,14 @@ def simulate_data(Nf=3,Tdelta=10):
     sb.run('cat base.rho > '+initialrho,shell=True)
     sb.run('cat tmp.rho >> '+initialrho,shell=True)
 
+    mydm=measures()
+    x=X0
+    y=Y0
+    z=Z0
+    mypos=mydm.position('ITRF',x,y,z)
+    mytime=mydm.epoch('UTC',str(t0)+'s')
+    mydm.doframe(mytime)
+    mydm.doframe(mypos)
     separation,azimuth,elevation=calculate_separation(outskymodel1,outcluster1,ra0,dec0,mydm)
     #########################################################################
     # simulate errors for K directions, attenuate those errors

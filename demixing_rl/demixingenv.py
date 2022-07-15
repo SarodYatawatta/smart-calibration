@@ -101,9 +101,13 @@ class DemixingEnv(gym.Env):
     infdata=hdul[0].data[0,:,:,:]
     infdata=infdata.astype(np.float32)
     hdul.close()
+    # metadata 0:K-1 are separations,
+    # For the directions included in calibration, set separation to 0
+    metadata_update=self.metadata.copy()
+    metadata_update[self.clus_id]=0
     observation={
       'infmap': infdata,
-      'metadata': self.metadata }
+      'metadata': metadata_update }
 
     self.std_residual=self.make_images_(col='MODEL_DATA')
 
