@@ -85,7 +85,7 @@ class DemixingEnv(gym.Env):
     # update state based on the action [-1,1] ->  rho = scale*(action)
     rho =action*(HIGH-LOW)/2+(HIGH+LOW)/2
     # find indices of selected directions
-    indices=np.where(rho>0.5)
+    indices=np.where(rho.squeeze()>0.5)
     self.clus_id=np.unique(indices[0]).tolist()
     self.clus_id.append(self.K-1)
     Kselected=len(self.clus_id)
