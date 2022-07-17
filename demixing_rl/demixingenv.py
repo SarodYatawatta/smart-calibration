@@ -79,6 +79,7 @@ class DemixingEnv(gym.Env):
     self.std_residual=0
     self.metadata=np.zeros(3*self.K+2,dtype=np.float32)
     self.N=1
+    self.prev_clus_id=None
 
   def step(self, action):
     done=False # make sure to return True at some point
@@ -88,6 +89,11 @@ class DemixingEnv(gym.Env):
     indices=np.where(rho.squeeze()>0.5)
     self.clus_id=np.unique(indices[0]).tolist()
     self.clus_id.append(self.K-1)
+    # check if current cluster selection (action) is same as previous
+    if self.prev_clus_id==self.clus_id:
+        done=True
+    else:
+        self.prev_clus_id=self.clus_id.copy()
     Kselected=len(self.clus_id)
     # create cluster file clusters based on clus_id indices
     self.print_clusters_()
@@ -160,6 +166,8 @@ class DemixingEnv(gym.Env):
     observation={
       'infmap': infdata,
       'metadata': metadata }
+    # remember current action taken
+    self.prev_clus_id=self.clus_id.copy()
     return observation
 
   # also return the std of average image
