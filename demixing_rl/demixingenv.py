@@ -142,6 +142,8 @@ class DemixingEnv(gym.Env):
     self.Clus=readcluster(self.cluster_full)
     self.initialize_rho_()
     # select only the target
+    self.clus_id=list()
+    self.clus_id.append(self.K-1)
     self.print_clusters_()
     self.output_rho_()
     # run calibration, use --oversubscribe if not enough slots are available
