@@ -21,14 +21,14 @@ if __name__ == '__main__':
     env = DemixingEnv(K=K,Nf=3,Ninf=128,Npix=1024,Tdelta=10)
     # number of actions = 2^(K-1) for the K-1 outlier directions
     agent = DemixingAgent(gamma=0.99, batch_size=32, n_actions=2**(K-1), tau=0.005, max_mem_size=4096,
-                  input_dims=[1,Ninf,Ninf], M=M, lr_a=1e-3, lr_c=1e-3) 
+                  input_dims=[1,Ninf,Ninf], M=M, lr_a=1e-3, lr_c=1e-3, warmup=100, update_interval=10) 
     scores=[]
     n_games = 30
     
     # load from disk DQN, replaymem
-    #agent.load_models()
-    #with open('scores.pkl','rb') as f:
-    #    scores=pickle.load(f)
+    agent.load_models()
+    with open('scores.pkl','rb') as f:
+        scores=pickle.load(f)
 
     for i in range(n_games):
         score = 0

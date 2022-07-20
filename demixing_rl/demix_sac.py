@@ -485,9 +485,11 @@ class ActorNetwork(nn.Module):
 
 # SAC in discrete action space, based on
 # https://github.com/Felhof/DiscreteSAC
+# and
+# https://github.com/ku2482/sac-discrete.pytorch
 class DemixingAgent():
     def __init__(self, gamma, lr_a, lr_c, input_dims, batch_size, n_actions,
-            max_mem_size=100, tau=0.001, M=30):
+            max_mem_size=100, tau=0.001, M=30, warmup=1000, update_interval=4):
         # Note: M is metadata size
         self.gamma = gamma
         self.tau=tau
@@ -495,6 +497,10 @@ class DemixingAgent():
         self.n_actions=n_actions
         # actions are always in [-1,1]
         self.max_action=1
+        self.warmup=warmup
+        self.update_interval=update_interval
+        self.time_step=0
+        self.learn_step_cntr=0
 
         self.prioritized=True
         if not self.prioritized:
@@ -515,7 +521,7 @@ class DemixingAgent():
         # reward scale ~ 1/alpha where alpha*entropy(pi(.|.)) is used for regularization of future reward
         self.target_entropy=0.98* -np.log(1/n_actions)
         self.log_alpha=T.tensor(np.log(1.),requires_grad=True)
-        self.alpha= self.log_alpha
+        self.alpha= self.log_alpha.exp()
         self.alpha_optimizer=T.optim.Adam([self.log_alpha],lr=1e-4)
 
         # initialize targets (hard copy)
@@ -533,14 +539,17 @@ class DemixingAgent():
         self.replaymem.store_transition(state,action,reward,state_,terminal)
 
     def choose_action(self, observation, evaluation_episode=False):
-        self.actor.eval() # to disable batchnorm
+        if self.time_step<self.warmup:
+            self.time_step+=1
+            action=np.random.choice(range(self.n_actions))
+            return action
 
+        self.actor.eval() # to disable batchnorm
         state = T.tensor(observation['infmap'].astype(np.float32),dtype=T.float32).to(mydevice)
         state = state[None,]
         state_sky = T.tensor(observation['metadata'].astype(np.float32),dtype=T.float32).to(mydevice)
         state_sky = state_sky[None,]
         action_probabilities = self.actor.forward(state,state_sky)
-
         self.actor.train() # to enable batchnorm
 
         action_probs=action_probabilities.squeeze(0).cpu().detach().numpy()
@@ -549,6 +558,7 @@ class DemixingAgent():
         else:
            action=np.random.choice(range(self.n_actions),p=action_probs)
 
+        self.time_step+=1
         return action
 
     def learn(self):
@@ -573,9 +583,10 @@ class DemixingAgent():
         reward_batch = T.tensor(reward).to(mydevice)
         terminal_batch = T.tensor(done).to(mydevice)
 
-        # FIXME: use this in MSE
         if self.prioritized:
             is_weight=T.tensor(is_weights).to(mydevice)
+        else:
+            is_weight=1
 
         self.critic_1.optimizer.zero_grad()
         self.critic_2.optimizer.zero_grad()
@@ -583,14 +594,14 @@ class DemixingAgent():
         self.alpha_optimizer.zero_grad()
 
         critic_1_loss, critic_2_loss =\
-           self.critic_loss(state_batch,state_batch_sky,new_state_batch,new_state_batch_sky,action_batch,reward_batch,terminal_batch)
+           self.critic_loss(state_batch,state_batch_sky,new_state_batch,new_state_batch_sky,action_batch,reward_batch,terminal_batch, is_weight)
 
         critic_1_loss.backward()
         critic_2_loss.backward()
         self.critic_1.optimizer.step()
         self.critic_2.optimizer.step()
 
-        actor_loss, log_action_probabilities=self.actor_loss(state_batch,state_batch_sky)
+        actor_loss, log_action_probabilities=self.actor_loss(state_batch,state_batch_sky, is_weight)
         actor_loss.backward()
         self.actor.optimizer.step()
 
@@ -599,10 +610,12 @@ class DemixingAgent():
         self.alpha_optimizer.step()
         self.alpha=self.log_alpha.exp()
         
-        self.update_network_parameters(self.target_critic_1, self.critic_1)
-        self.update_network_parameters(self.target_critic_2, self.critic_2)
+        self.learn_step_cntr+=1
+        if self.learn_step_cntr % self.update_interval == 0:
+           self.update_network_parameters(self.target_critic_1, self.critic_1)
+           self.update_network_parameters(self.target_critic_2, self.critic_2)
 
-    def critic_loss(self,state_batch,state_batch_sky,new_state_batch,new_state_batch_sky,action_batch,reward_batch,terminal_batch):
+    def critic_loss(self,state_batch,state_batch_sky,new_state_batch,new_state_batch_sky,action_batch,reward_batch,terminal_batch, is_weight):
         with T.no_grad():
             action_probabilities,log_action_probabilities=self.actor.get_action_info(new_state_batch,new_state_batch_sky)
             next_q_1_target=self.target_critic_1.forward(new_state_batch,new_state_batch_sky)
@@ -622,18 +635,22 @@ class DemixingAgent():
             errors2=critic2_square_err.detach().cpu().numpy()
             self.replaymem.batch_update(self.idxs,0.5*(errors1+errors2))
 
-        critic_1_loss=critic1_square_err.mean()
-        critic_2_loss=critic2_square_err.mean()
+        if self.prioritized:
+          critic_1_loss=(is_weight*critic1_square_err).mean()
+          critic_2_loss=(is_weight*critic2_square_err).mean()
+        else:
+          critic_1_loss=critic1_square_err.mean()
+          critic_2_loss=critic2_square_err.mean()
 
         return critic_1_loss, critic_2_loss
 
-    def actor_loss(self, state_batch, state_batch_sky):
+    def actor_loss(self, state_batch, state_batch_sky, is_weight):
         action_probabilities, log_action_probabilities=self.actor.get_action_info(state_batch, state_batch_sky)
         q_1=self.critic_1(state_batch,state_batch_sky)
         q_2=self.critic_2(state_batch,state_batch_sky)
 
         inner_term=self.alpha*log_action_probabilities-T.min(q_1,q_2)
-        policy_loss=(action_probabilities*inner_term).sum(dim=1).mean()
+        policy_loss=(is_weight*action_probabilities*inner_term).sum(dim=1).mean()
         return policy_loss, log_action_probabilities
 
     def temperature_loss(self,log_action_probabilities):
