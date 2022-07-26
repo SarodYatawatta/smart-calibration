@@ -129,6 +129,8 @@ class DemixingEnv(gym.Env):
     influence_std=infdata.std()/100 # arbitray scaling, because influence is alreade scaled in calculation
     # penalize by influence 
     reward-=influence_std*influence_std
+    # normalize reward (mean/variance found by the initial ~3000 reward values)
+    reward=(reward-(-859))/3559.0
     print('STD %f %f Inf %f K %d N %d reward %f'%(data_var,noise_var,influence_std,Kselected,self.N,reward))
     info={}
     return observation, reward, done, info
