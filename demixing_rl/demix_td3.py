@@ -280,6 +280,12 @@ class PER(object):  # stored as ( s, a, r, s_new, done ) in SumTree
             self.reward_memory=temp.reward_memory
             self.terminal_memory=temp.terminal_memory
 
+    # normalize rewards
+    def normalize_reward(self):
+          mu=self.reward_memory[:self.mem_cntr].mean()
+          sigma=self.reward_memory[:self.mem_cntr].std()
+          self.reward_memory[:self.mem_cntr]=(self.reward_memory[:self.mem_cntr]-mu)/sigma
+
 ########################################
 
 class ReplayBuffer(object):
