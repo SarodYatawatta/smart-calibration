@@ -206,7 +206,7 @@ class PER(object):  # stored as ( s, a, r, s_new, done ) in SumTree
     alpha = 0.6  # [0..1] convert the importance of TD error to priority, often 0.6
     beta = 0.4  # importance-sampling, from initial value increasing to 1, often 0.4
     beta_increment_per_sampling = 1e-4  # annealing the bias, often 1e-3
-    absolute_error_upper = 1.   # clipped abs error
+    absolute_error_upper = 100.   # clipped abs error
     mem_cntr=0
     
     def __init__(self, capacity, input_shape, n_actions):
@@ -242,6 +242,22 @@ class PER(object):  # stored as ( s, a, r, s_new, done ) in SumTree
         self.terminal_memory[index]=done
         self.state_memory[index] = T.cat((state['eig'],state['A']))
         self.new_state_memory[index] = T.cat((state_['eig'],state_['A']))
+
+        self.mem_cntr+=1
+
+    # method to copy replaymemory from another buffer into self
+    def store_transition_from_buffer(self, state, action, reward, state_, done, error = None):
+        if error is None:
+            priority = np.amax(self.tree.tree[-self.tree.capacity:])
+            if priority == 0: priority = self.absolute_error_upper
+        else:
+            priority = min((abs(error) + self.epsilon) ** self.alpha, self.absolute_error_upper)
+        index=self.tree.add(priority)
+        self.action_memory[index]=action
+        self.reward_memory[index]=reward
+        self.terminal_memory[index]=done
+        self.state_memory[index] = state
+        self.new_state_memory[index] = state_
 
         self.mem_cntr+=1
     
@@ -481,7 +497,6 @@ class ActorNetwork(nn.Module):
         action = T.tanh(actions)*T.tensor(self.max_action).to(self.device)
         log_probs = probabilities.log_prob(actions)
         log_probs -= T.log(1-action.pow(2)+self.reparam_noise)
-        #log_probs = log_probs.sum(1, keepdim=True)
         log_probs = log_probs.sum(1, keepdim=True)
 
         return action, log_probs
