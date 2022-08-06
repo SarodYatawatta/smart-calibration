@@ -51,7 +51,6 @@ def calculate_separation(skymodel,clusterfile,ra0,dec0,measure):
        mdec=(float(sinfo[3])+float(sinfo[4])/60.+float(sinfo[5])/3600.)*math.pi/180.0
        mra_q=quantity(mra,'rad')
        mdec_q=quantity(mdec,'rad')
-       cluster_dir=measure.direction('j2000',mra_q,mdec_q)
        if ck<K-1:
          cluster_dir=measure.direction('j2000',mra_q,mdec_q)
        else: # last cluster is target

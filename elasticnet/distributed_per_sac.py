@@ -76,6 +76,10 @@ class Learner:
           # initiated by the actors,
           # also the learn() step is called thereafter
 
+          # also save models/replaybuffer
+          if episode%10==0:
+            self.agent.save_models()
+
     def get_actor_params(self):
         params=self.agent.actor.named_parameters()
         params_cpu=dict()
@@ -120,7 +124,7 @@ class Actor:
         print(f'Actor: updating actor from learner')
         fut=learner_rref.rpc_async().get_actor_params()
         params=fut.wait()
-        self.actor.load_state_dict(params)
+        self.actor.load_state_dict(params,strict=False)
 
         for epoch in range(10):
           observation=self.env.reset()
