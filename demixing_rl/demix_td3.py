@@ -156,7 +156,7 @@ class PER(object):  # stored as ( s, a, r, s_new, done ) in SumTree
     alpha = 0.6  # [0..1] convert the importance of TD error to priority, often 0.6
     beta = 0.4  # importance-sampling, from initial value increasing to 1, often 0.4
     beta_increment_per_sampling = 1e-4  # annealing the bias, often 1e-3
-    absolute_error_upper = 1.   # clipped abs error
+    absolute_error_upper = 100.   # clipped abs error
     mem_cntr=0
     
     def __init__(self, capacity, input_shape, n_actions, M):

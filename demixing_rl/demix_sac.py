@@ -200,6 +200,25 @@ class PER(object):  # stored as ( s, a, r, s_new, done ) in SumTree
         self.new_state_memory_sky[index] = state_['metadata']
 
         self.mem_cntr+=1
+
+    # method to copy replaymemory from another buffer into self
+    def store_transition_from_buffer(self, state, action, reward, state_, done, error = None):
+        if error is None:
+            priority = np.amax(self.tree.tree[-self.tree.capacity:])
+            if priority == 0: priority = self.absolute_error_upper
+        else:
+            priority = min((abs(error) + self.epsilon) ** self.alpha, self.absolute_error_upper)
+        index=self.tree.add(priority)
+        self.action_memory[index]=action
+        self.reward_memory[index]=reward
+        self.terminal_memory[index]=done
+        self.state_memory_img[index] = state['infmap']
+        self.state_memory_sky[index] = state['metadata']
+        self.new_state_memory_img[index] = state_['infmap']
+        self.new_state_memory_sky[index] = state_['metadata']
+
+        self.mem_cntr+=1
+
     
     def sample_buffer(self, batch_size):
         #"""
@@ -489,7 +508,7 @@ class ActorNetwork(nn.Module):
 # https://github.com/ku2482/sac-discrete.pytorch
 class DemixingAgent():
     def __init__(self, gamma, lr_a, lr_c, input_dims, batch_size, n_actions,
-            max_mem_size=100, tau=0.001, M=30, warmup=1000, update_interval=4):
+            max_mem_size=100, tau=0.001, M=30, warmup=1000, update_interval=4, prioritized=True):
         # Note: M is metadata size
         self.gamma = gamma
         self.tau=tau
@@ -502,7 +521,7 @@ class DemixingAgent():
         self.time_step=0
         self.learn_step_cntr=0
 
-        self.prioritized=True
+        self.prioritized=prioritized
         if not self.prioritized:
            self.replaymem=ReplayBuffer(max_mem_size, input_dims, n_actions, M)
         else:
