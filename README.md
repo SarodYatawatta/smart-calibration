@@ -12,7 +12,7 @@ Implemented in PyTorch, using openai.gym. Algorithms tested are: [DDPG](https://
 
 <img src="figures/enet_pipeline.png" alt="Elastic net regression agent and environment" width="700"/>
 
-Run ``` main_{ddpg|td3|sac}.py ``` to use DDPG or TD3 or SAC. Prioritized experience replay can be enabled by using the flag ```prioritized=True```.
+Run ``` main_{ddpg|td3|sac}.py ``` to use DDPG or TD3 or SAC. Prioritized experience replay can be enabled by using the flag ```prioritized=True```. See also [this](elasticnet/README.md) for distributed learning.
 
 Files included are:
 
