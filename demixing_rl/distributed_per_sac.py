@@ -161,9 +161,9 @@ class Actor:
             action=np.random.choice(range(self.n_actions))
             return action
 
-        state = T.tensor(observation['infmap'].astype(np.float32),dtype=T.float32).to(self.device)
+        state = torch.tensor(observation['infmap'].astype(np.float32),dtype=torch.float32).to(self.device)
         state = state[None,]
-        state_sky = T.tensor(observation['metadata'].astype(np.float32),dtype=T.float32).to(self.device)
+        state_sky = torch.tensor(observation['metadata'].astype(np.float32),dtype=torch.float32).to(self.device)
         state_sky = state_sky[None,]
         action_probabilities = self.actor.forward(state,state_sky)
 
