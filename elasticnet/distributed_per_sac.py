@@ -182,7 +182,7 @@ if __name__=='__main__':
             help='rank of this process')
     parser.add_argument('--world-size',default=2,type=int,metavar='w',
             help='number of processes, one learner and actors')
-    parser.add_argument('--learner_addr',default='localhost',type=str,metavar='l',
+    parser.add_argument('--learner-addr',default='localhost',type=str,metavar='l',
             help='learner (rank 0) address')
     parser.add_argument('--learner-port',default='59999',type=str,metavar='p',
             help='learner (rank 0) port')
