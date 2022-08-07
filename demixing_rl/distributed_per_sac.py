@@ -196,6 +196,9 @@ def run_process(rank,world_size,addr,port):
         rpc.init_rpc(LEARNER_NAME,rank=rank,world_size=world_size,rpc_backend_options=options)
         learner=Learner(world_size,K=6,Ninf=128)
         
+        # load from saved models
+        learner.agent.load_models()
+
         # run main loop 
         learner.run_episodes(1000)
     else:
