@@ -614,7 +614,10 @@ class Agent():
         critic_value = critic_value.view(-1)
 
         actor_loss = log_probs - critic_value
-        actor_loss = T.mean(actor_loss)
+        if not self.prioritized:
+          actor_loss = T.mean(actor_loss)
+        else:
+          actor_loss = T.mean(actor_loss*is_weight)
         self.actor.optimizer.zero_grad()
         actor_loss.backward(retain_graph=True)
         self.actor.optimizer.step()

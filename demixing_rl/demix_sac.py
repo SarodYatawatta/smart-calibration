@@ -669,7 +669,7 @@ class DemixingAgent():
         q_2=self.critic_2(state_batch,state_batch_sky)
 
         inner_term=self.alpha*log_action_probabilities-T.min(q_1,q_2)
-        policy_loss=(is_weight*action_probabilities*inner_term).sum(dim=1).mean()
+        policy_loss=(is_weight*((action_probabilities*inner_term).sum(dim=1))).mean()
         return policy_loss, log_action_probabilities
 
     def temperature_loss(self,log_action_probabilities):
