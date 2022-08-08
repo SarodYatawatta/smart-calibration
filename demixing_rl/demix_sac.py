@@ -624,7 +624,7 @@ class DemixingAgent():
         actor_loss.backward()
         self.actor.optimizer.step()
 
-        alpha_loss=self.temperature_loss(log_action_probabilities)
+        alpha_loss=self.temperature_loss(log_action_probabilities, is_weight)
         alpha_loss.backward()
         self.alpha_optimizer.step()
         self.alpha=self.log_alpha.exp()
@@ -672,8 +672,8 @@ class DemixingAgent():
         policy_loss=(is_weight*((action_probabilities*inner_term).sum(dim=1))).mean()
         return policy_loss, log_action_probabilities
 
-    def temperature_loss(self,log_action_probabilities):
-        alpha_loss=-(self.log_alpha*(log_action_probabilities+self.target_entropy).detach()).mean()
+    def temperature_loss(self,log_action_probabilities, is_weight):
+        alpha_loss=-(self.log_alpha*(is_weight*(log_action_probabilities+self.target_entropy).mean(dim=1)).detach()).mean()
         return alpha_loss
 
     def save_models(self):

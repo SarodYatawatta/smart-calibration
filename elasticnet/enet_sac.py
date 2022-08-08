@@ -602,7 +602,10 @@ class Agent():
 
         self.value.optimizer.zero_grad()
         value_target = critic_value - log_probs
-        value_loss = 0.5 * F.mse_loss(value, value_target)
+        if not self.prioritized:
+          value_loss = 0.5 * F.mse_loss(value, value_target)
+        else:
+          value_loss = 0.5 * self.replaymem.mse(value, value_target, is_weight)
         value_loss.backward(retain_graph=True)
         self.value.optimizer.step()
 
