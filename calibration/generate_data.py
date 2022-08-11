@@ -897,7 +897,7 @@ def simulate_data(Nf=3,Tdelta=10):
     # integration time (s)
     Tint=1
 
-    ra0,dec0,t0=find_valid_target(sky_model_gen_strat=2)
+    ra0,dec0,t0=find_valid_target(sky_model_gen_strat=np.random.choice(3))
 
     # now we have a valid ra0,dec0 and t0 tuple
     strtime=time.strftime('%Y/%m/%d/%H:%M:%S',time.gmtime(t0))

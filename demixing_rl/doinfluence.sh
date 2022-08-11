@@ -13,7 +13,7 @@ while [ $ci -le 0 ]; do # -le 8 for all freqs
  python  ./analysis.py ./sky.txt ./cluster_epi.txt ./smalluvw.txt ./admm_rho_epi.txt $MS.solutions 0.1 4 # last parameters: alpha number_of_parallel_jobs
  python ./writecorr.py $MS fff;
  # -x 2 for fullpol
- /home/sarod/work/excon/src/MS/excon -x 0 -m $MS -c CORRECTED_DATA -d 128 -p 20
+ /home/sarod/work/excon/src/MS/excon -t 4 -x 0 -m $MS -c CORRECTED_DATA -d 128 -p 20
  let "ci = $ci + 1";
 done
 

@@ -4,13 +4,6 @@ import numpy as np
 from demixingenv import DemixingEnv
 import pickle
 
-# convert integer to binary bits, return array of size K
-def scalar_to_kvec(n,K=5):
-    ll=[1 if digit=='1' else 0 for digit in bin(n)[2:]]
-    a=np.zeros(K)
-    a[-len(ll):]=ll
-    return a
-
 if __name__ == '__main__':
     # directions in order: CasA,CygA,HerA,TauA,VirA and target
     K=6 # directions: last is the target direction, the rest are outlier sources
@@ -18,17 +11,18 @@ if __name__ == '__main__':
     Ninf=128 # influence map Ninf x Ninf
     # metadata = (separation,azimuth,elevation) K + (lowest)frequency + n_stations= 3K+2
     M=3*K+2
-    env = DemixingEnv(K=K,Nf=3,Ninf=128,Npix=1024,Tdelta=10)
+    provide_hint=False # to enable generation of hint from env
+    env = DemixingEnv(K=K,Nf=3,Ninf=128,Npix=1024,Tdelta=10,provide_hint=provide_hint)
     # number of actions = 2^(K-1) for the K-1 outlier directions
-    agent = DemixingAgent(gamma=0.99, batch_size=32, n_actions=2**(K-1), tau=0.005, max_mem_size=4096,
-                  input_dims=[1,Ninf,Ninf], M=M, lr_a=1e-3, lr_c=1e-3, warmup=100, update_interval=10) 
+    agent = DemixingAgent(gamma=0.99, batch_size=64, n_actions=2**(K-1), tau=0.005, max_mem_size=4096,
+                  input_dims=[1,Ninf,Ninf], M=M, lr_a=1e-3, lr_c=1e-3, warmup=200, update_interval=10, use_hint=provide_hint) 
     scores=[]
     n_games = 30
     
     # load from disk DQN, replaymem
-    agent.load_models()
-    with open('scores.pkl','rb') as f:
-        scores=pickle.load(f)
+    #agent.load_models()
+    #with open('scores.pkl','rb') as f:
+    #    scores=pickle.load(f)
 
     for i in range(n_games):
         score = 0
@@ -39,13 +33,18 @@ if __name__ == '__main__':
         loop=0
         while (not done) and loop<7:
             action_ = agent.choose_action(observation)
-            # map action in 2^(K-1) to K-1 vector
-            action=scalar_to_kvec(action_,K-1)
-            observation_, reward, done, info = env.step(action)
+            # map action in [0,2^(K-1)) to K-1 vector
+            action=env.scalar_to_kvec(action_,K-1)
+            if provide_hint:
+              observation_, reward, done, hint, info = env.step(action)
+              agent.store_transition(observation, action_, reward, 
+                                    observation_, done, hint)
+            else:
+              observation_, reward, done, info = env.step(action)
+              agent.store_transition(observation, action_, reward, 
+                                    observation_, done, np.zeros(2**(K-1)))
+
             score += reward
-            # map action to 2^(K-1) vector
-            agent.store_transition(observation, action_, reward, 
-                                    observation_, done)
             agent.learn()
             observation = observation_
             loop+=1

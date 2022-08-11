@@ -48,7 +48,7 @@ class SKEnet(BaseEstimator,RegressorMixin):
        return loss
 
      # initialize solution to zero
-     theta0=np.zeros((M,1))
+     theta0=np.zeros(M)
      result=minimize(lossfunction,theta0,args=(X,Y),method='L-BFGS-B',)#options={'disp':True, 'ftol':1e-9,'gtol':1e-9})
      # copy solution coeff_=theta
      self.coeff_=np.reshape(result.x,(M,1))

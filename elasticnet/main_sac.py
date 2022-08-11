@@ -10,12 +10,13 @@ from enet_sac import Agent
 if __name__ == '__main__':
     N=20 # rows = data points
     M=20 # columns = parameters, note, if N<M, no unique solution
-    env = ENetEnv(M,N)
+    provide_hint=True# to enable generation of hint from env
+    env = ENetEnv(M,N,provide_hint=provide_hint)
     # actions: 2
     # prioritized=True for prioritized experience replay memory
     agent = Agent(gamma=0.99, batch_size=64, n_actions=2, tau=0.005,
                   max_mem_size=1024, input_dims=[N+N*M], lr_a=1e-3, lr_c=1e-3,
-                 reward_scale=N, prioritized=True)
+                 reward_scale=N, prioritized=True, use_hint=provide_hint)
     # note: input dims: N eigenvalues+ N*M size of design matrix, 
     # lr_a: learning rate actor, lr_c:learning rate critic
     scores=[]
@@ -33,10 +34,15 @@ if __name__ == '__main__':
         loop=0
         while (not done) and loop<4: # limit number of loops as well
             action = agent.choose_action(observation)
-            observation_, reward, done, info = env.step(action)
+            if provide_hint:
+               observation_, reward, done, hint, info = env.step(action)
+               agent.store_transition(observation, action, reward, 
+                                    observation_, done, hint)
+            else:
+               observation_, reward, done, info = env.step(action)
+               agent.store_transition(observation, action, reward, 
+                                    observation_, done, np.zeros_like(action))
             score += reward
-            agent.store_transition(observation, action, reward, 
-                                    observation_, done)
             agent.learn()
             observation = observation_
             loop+=1
@@ -48,7 +54,7 @@ if __name__ == '__main__':
         print('episode ', i, 'score %.2f' % score,
                 'average score %.2f' % avg_score)
         if i%10==0:
-          env.render()
+          #env.render()
           # save models to disk
           agent.save_models()
 

@@ -176,6 +176,7 @@ class PER(object):  # stored as ( s, a, r, s_new, done ) in SumTree
         self.action_memory=np.zeros((self.mem_size,1),dtype=int)
         self.reward_memory=np.zeros(self.mem_size,dtype=np.float32)
         self.terminal_memory=np.zeros(self.mem_size,dtype=bool)
+        self.hint_memory=np.zeros((self.mem_size,n_actions),dtype=np.float32)
         self.filename='prioritized_replaymem_sac.model'
     
     def __len__(self):
@@ -184,7 +185,7 @@ class PER(object):  # stored as ( s, a, r, s_new, done ) in SumTree
     def is_full(self):
         return len(self.tree) >= self.tree.capacity
     
-    def store_transition(self, state, action, reward, state_, done, error = None):
+    def store_transition(self, state, action, reward, state_, done, hint, error = None):
         if error is None:
             priority = np.amax(self.tree.tree[-self.tree.capacity:])
             if priority == 0: priority = self.absolute_error_upper
@@ -198,11 +199,12 @@ class PER(object):  # stored as ( s, a, r, s_new, done ) in SumTree
         self.state_memory_sky[index] = state['metadata']
         self.new_state_memory_img[index] = state_['infmap']
         self.new_state_memory_sky[index] = state_['metadata']
+        self.hint_memory[index]=hint
 
         self.mem_cntr+=1
 
     # method to copy replaymemory from another buffer into self
-    def store_transition_from_buffer(self, state, action, reward, state_, done, error = None):
+    def store_transition_from_buffer(self, state, action, reward, state_, done, hint, error = None):
         if error is None:
             priority = np.amax(self.tree.tree[-self.tree.capacity:])
             if priority == 0: priority = self.absolute_error_upper
@@ -216,6 +218,7 @@ class PER(object):  # stored as ( s, a, r, s_new, done ) in SumTree
         self.state_memory_sky[index] = state['metadata']
         self.new_state_memory_img[index] = state_['infmap']
         self.new_state_memory_sky[index] = state_['metadata']
+        self.hint_memory[index]=hint
 
         self.mem_cntr+=1
 
@@ -263,7 +266,8 @@ class PER(object):  # stored as ( s, a, r, s_new, done ) in SumTree
         states_={ 'infmap':self.new_state_memory_img[data_idxs],
                 'metadata':self.new_state_memory_sky[data_idxs] }
         terminal=self.terminal_memory[data_idxs]
-        return states, actions, rewards, states_, terminal, idxs, is_weights
+        hints=self.hint_memory[data_idxs]
+        return states, actions, rewards, states_, terminal, hints, idxs, is_weights
     
     def batch_update(self, idxs, errors):
         #"""
@@ -299,6 +303,7 @@ class PER(object):  # stored as ( s, a, r, s_new, done ) in SumTree
             self.action_memory=temp.action_memory
             self.reward_memory=temp.reward_memory
             self.terminal_memory=temp.terminal_memory
+            self.hint_memory=temp.hint_memory
 
 ########################################
 
@@ -315,9 +320,10 @@ class ReplayBuffer(object):
         self.action_memory = np.zeros((self.mem_size,1), dtype=int)
         self.reward_memory = np.zeros(self.mem_size, dtype=np.float32)
         self.terminal_memory = np.zeros(self.mem_size, dtype=bool)
+        self.hint_memory = np.zeros((self.mem_size,n_actions), dtype=np.float32)
         self.filename='replaymem_sac.model' # for saving object
 
-    def store_transition(self, state, action, reward, state_, done):
+    def store_transition(self, state, action, reward, state_, done, hint):
         index = self.mem_cntr % self.mem_size
         self.action_memory[index] = action
         self.reward_memory[index] = reward
@@ -326,6 +332,7 @@ class ReplayBuffer(object):
         self.state_memory_sky[index] = state['metadata']
         self.new_state_memory_img[index] = state_['infmap']
         self.new_state_memory_sky[index] = state_['metadata']
+        self.hint_memory[index]=hint
 
         self.mem_cntr += 1
 
@@ -340,8 +347,9 @@ class ReplayBuffer(object):
         states_ = {'infmap': self.new_state_memory_img[batch],
                   'metadata': self.new_state_memory_sky[batch]}
         terminal = self.terminal_memory[batch]
+        hint=self.hint_memory[batch]
 
-        return states, actions, rewards, states_, terminal
+        return states, actions, rewards, states_, terminal, hint
 
     def save_checkpoint(self):
         with open(self.filename,'wb') as f:
@@ -359,6 +367,7 @@ class ReplayBuffer(object):
           self.action_memory=temp.action_memory
           self.reward_memory=temp.reward_memory
           self.terminal_memory=temp.terminal_memory
+          self.hint_hint=temp.hint_memory
 
 # input: state, output: action space \in R^|action|
 class CriticNetwork(nn.Module):
@@ -508,7 +517,7 @@ class ActorNetwork(nn.Module):
 # https://github.com/ku2482/sac-discrete.pytorch
 class DemixingAgent():
     def __init__(self, gamma, lr_a, lr_c, input_dims, batch_size, n_actions,
-            max_mem_size=100, tau=0.001, M=30, warmup=1000, update_interval=4, prioritized=True):
+            max_mem_size=100, tau=0.001, M=30, warmup=1000, update_interval=4, prioritized=True, use_hint=False):
         # Note: M is metadata size
         self.gamma = gamma
         self.tau=tau
@@ -547,6 +556,11 @@ class DemixingAgent():
         self.update_network_parameters(self.target_critic_1, self.critic_1, tau=1.)
         self.update_network_parameters(self.target_critic_2, self.critic_2, tau=1.)
 
+        self.use_hint=use_hint
+        self.admm_rho=0.1
+        self.Nadmm=5
+
+
     def update_network_parameters(self, target_model, origin_model, tau=None):
         if tau is None:
             tau = self.tau
@@ -554,8 +568,11 @@ class DemixingAgent():
         for target_param, local_param in zip(target_model.parameters(), origin_model.parameters()):
             target_param.data.copy_(tau* local_param.data + (1-tau) * target_param.data)
 
-    def store_transition(self, state, action, reward, state_, terminal):
-        self.replaymem.store_transition(state,action,reward,state_,terminal)
+    def store_transition(self, state, action, reward, state_, terminal, hint):
+        if not self.prioritized:
+           self.replaymem.store_transition(state,action,reward,state_,terminal,hint)
+        else:
+           self.replaymem.store_transition(state,action,reward,state_,terminal,hint)
 
     def choose_action(self, observation, evaluation_episode=False):
         if self.time_step<self.warmup:
@@ -585,10 +602,10 @@ class DemixingAgent():
             return
         
         if not self.prioritized:
-            state, action, reward, new_state, done = \
+            state, action, reward, new_state, done, hint = \
                                 self.replaymem.sample_buffer(self.batch_size)
         else:
-            state, action, reward, new_state, done, idxs, is_weights = \
+            state, action, reward, new_state, done, hint, idxs, is_weights = \
                                 self.replaymem.sample_buffer(self.batch_size)
             self.idxs=idxs
  
@@ -601,6 +618,7 @@ class DemixingAgent():
         action_batch = T.tensor(action).to(mydevice)
         reward_batch = T.tensor(reward).to(mydevice)
         terminal_batch = T.tensor(done).to(mydevice)
+        hint_batch= T.tensor(hint).to(mydevice)
 
         if self.prioritized:
             is_weight=T.tensor(is_weights).to(mydevice)
@@ -620,9 +638,18 @@ class DemixingAgent():
         self.critic_1.optimizer.step()
         self.critic_2.optimizer.step()
 
-        actor_loss, log_action_probabilities=self.actor_loss(state_batch,state_batch_sky, is_weight)
-        actor_loss.backward()
-        self.actor.optimizer.step()
+        if not self.use_hint:
+            actor_loss, log_action_probabilities=self.actor_loss_without_hint(state_batch,state_batch_sky, is_weight)
+            actor_loss.backward()
+            self.actor.optimizer.step()
+        else:
+           lagrange_y=T.zeros(hint_batch.numel(),requires_grad=False).to(mydevice)
+           for admm in range(self.Nadmm):
+              actor_loss, actions, log_action_probabilities=self.actor_loss(state_batch,state_batch_sky, lagrange_y, hint_batch, is_weight)
+              actor_loss.backward(retain_graph=True)
+              self.actor.optimizer.step()
+              with T.no_grad():
+                  lagrange_y=lagrange_y+self.admm_rho*(actions-hint_batch).view(-1)
 
         alpha_loss=self.temperature_loss(log_action_probabilities, is_weight)
         alpha_loss.backward()
@@ -663,14 +690,29 @@ class DemixingAgent():
 
         return critic_1_loss, critic_2_loss
 
-    def actor_loss(self, state_batch, state_batch_sky, is_weight):
+    def actor_loss_without_hint(self, state_batch, state_batch_sky, is_weight):
         action_probabilities, log_action_probabilities=self.actor.get_action_info(state_batch, state_batch_sky)
         q_1=self.critic_1(state_batch,state_batch_sky)
         q_2=self.critic_2(state_batch,state_batch_sky)
 
         inner_term=self.alpha*log_action_probabilities-T.min(q_1,q_2)
         policy_loss=(is_weight*((action_probabilities*inner_term).sum(dim=1))).mean()
+        print(policy_loss.data.item())
         return policy_loss, log_action_probabilities
+
+
+    def actor_loss(self, state_batch, state_batch_sky, lagrange_y, hints, is_weight):
+        action_probabilities, log_action_probabilities=self.actor.get_action_info(state_batch, state_batch_sky)
+        q_1=self.critic_1(state_batch,state_batch_sky)
+        q_2=self.critic_2(state_batch,state_batch_sky)
+
+        inner_term=self.alpha*log_action_probabilities-T.min(q_1,q_2)
+        policy_loss=(is_weight*((action_probabilities*inner_term).sum(dim=1))).mean()
+        diff1=(action_probabilities-hints).view(-1)
+        loss1=((T.dot(lagrange_y,diff1)+self.admm_rho/2*F.mse_loss(action_probabilities,hints))*is_weight).mean()/action_probabilities.numel()
+        print(loss1.data.item(),policy_loss.data.item())
+        policy_loss=policy_loss+loss1
+        return policy_loss, action_probabilities, log_action_probabilities
 
     def temperature_loss(self,log_action_probabilities, is_weight):
         alpha_loss=-(self.log_alpha*(is_weight*(log_action_probabilities+self.target_entropy).mean(dim=1)).detach()).mean()

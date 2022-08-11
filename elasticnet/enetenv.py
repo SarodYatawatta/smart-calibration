@@ -5,6 +5,12 @@ from lbfgsnew import LBFGSNew
 from autograd_tools import *
 import time
 
+from sklearn.base import BaseEstimator
+from sklearn.base import RegressorMixin
+from sklearn.model_selection import GridSearchCV
+import scipy.linalg
+from scipy.optimize import minimize
+
 # (try to) use a GPU for computation?
 use_cuda=True
 if use_cuda and torch.cuda.is_available():
@@ -24,7 +30,7 @@ class ENetEnv(gym.Env):
   # solve 
   # arg min_x || y - Ax ||^2 + \lambda1 (||x||_2)^2 + \lambda2 ||x||_1
   # A: tall matrix NxM, N>M
-  def __init__(self, M=5, N=15):
+  def __init__(self, M=5, N=15, provide_hint=False):
     super(ENetEnv, self).__init__()
     # N=rows=datapoints, M=columns=parameters
     # Define action and observation space
@@ -63,6 +69,8 @@ class ENetEnv(gym.Env):
     self.x=torch.zeros(M,dtype=torch.float32,requires_grad=False,device=mydevice)
     # following for evaluation (keeping noise the same)
     self.y=None
+    self.hint=None
+    self.provide_hint=provide_hint
 
   def step(self, action, keepnoise=False):
     done=False # make sure to return True at some point
@@ -82,9 +90,9 @@ class ENetEnv(gym.Env):
     if not keepnoise:
       torch.manual_seed(time.time())
       n=torch.randn(self.N,dtype=torch.float32,requires_grad=False,device=mydevice)
-      y=self.y0+self.SNR*torch.norm(self.y0)/torch.norm(n)*n
-    else:
-      y=self.y
+      self.y=self.y0+self.SNR*torch.norm(self.y0)/torch.norm(n)*n
+    
+    y=self.y
     # parameters, initialized to zero
     x=torch.zeros(self.M,requires_grad=True,device=mydevice)
 
@@ -146,7 +154,14 @@ class ENetEnv(gym.Env):
 
     # info : meta details {}
     info={}    
-    return observation, reward, done, info
+
+    # calculate and store the hint for future use
+    if self.provide_hint:
+        if self.hint is None:
+          self.hint=self.get_hint()
+        return observation, reward, done, self.hint, info
+    else:
+        return observation, reward, done, info
 
   def reset(self):
     #torch.manual_seed(19)
@@ -163,6 +178,7 @@ class ENetEnv(gym.Env):
     self.x0[np.random.randint(0,self.M,self.Mo)]=z0
     self.y0=torch.matmul(self.A,self.x0)
 
+    self.hint=None
     # rho <- rho0
     self.rho=LOW*torch.ones(self.K,dtype=torch.float32)
     observation={'A': self.A.view(-1).cpu(),
@@ -212,5 +228,71 @@ class ENetEnv(gym.Env):
 
     self.x=x
 
+  # provide a hint to best action using a classic method
+  def get_hint(self):
+    # object for grid search
+    sk=SKEnet(lambda1=0.0001,lambda2=0.0001)
+    # grid settings
+    parameters={'lambda1':[0.001, 0.005, 0.01, 0.05, 0.1], 'lambda2':[0.001, 0.005, 0.01, 0.05, 0.1]}
+    clf=GridSearchCV(sk,parameters, cv=2, verbose=0, scoring='neg_mean_squared_error')
+    clf.fit(self.A.cpu().numpy(),np.reshape(self.y.cpu().numpy(),(self.N,1)))
+    best=clf.best_params_
+    hint_=np.zeros(2)
+    hint_[0]=best['lambda1']
+    hint_[1]=best['lambda2']
+    # map back to action space (inverse of what is done in step())
+    return (hint_-(HIGH+LOW)/2)/((HIGH-LOW)/2)
+ 
   def close (self):
     pass
+
+
+
+# Class for using grid search
+class SKEnet(BaseEstimator,RegressorMixin):
+  """
+   Methods inherited
+   BaseEstimator: set_param(), get_param()
+   RegressorMixin: score()
+  """
+  def __init__(self, lambda1, lambda2):
+     """
+     """
+     super().__init__()
+     self.lambda1=lambda1
+     self.lambda2=lambda2
+     self.coeff_=None # solution
+
+  def fit(self,X,Y):
+     """
+     X=A, Y=y
+     solve
+     argmin_theta ||A theta -y||^2 + lambda1 ||theta||_1 + lambda2 ||theta||_2^2
+     """
+     # N: datapoints, M:parameters
+     N,M=X.shape
+     N1,_=Y.shape
+     assert(N==N1)
+
+     # loss function
+     def lossfunction(x,A,y):
+       x=np.reshape(x,(M,1))
+       loss=self.lambda2*(np.linalg.norm(x,2)**2)+self.lambda1*(np.linalg.norm(x,1))
+       err1=np.matmul(A,x)-y
+       loss+=np.linalg.norm(err1,2)**2
+       return loss
+
+     # initialize solution to zero
+     theta0=np.zeros(M)
+     result=minimize(lossfunction,theta0,args=(X,Y),method='L-BFGS-B',)#options={'disp':True, 'ftol':1e-9,'gtol':1e-9})
+     # copy solution coeff_=theta
+     self.coeff_=np.reshape(result.x,(M,1))
+
+     return self
+
+  def predict(self,X):
+     """
+     X=A
+     output = A theta
+     """
+     return np.matmul(X,self.coeff_)

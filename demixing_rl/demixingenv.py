@@ -2,9 +2,10 @@ import gym
 from gym import spaces
 import numpy as np
 import subprocess as sb
-from astropy.io import fits
 import torch
-import os,sys
+import os,sys,itertools
+from astropy.io import fits
+import casacore.tables as ctab
 # append script path
 sys.path.append(os.path.relpath('../calibration'))
 
@@ -35,7 +36,7 @@ class DemixingEnv(gym.Env):
   # reward: decrease in residual/number of directions demixed + influence map penalty
   # Ninf=influence map dimensions NinfxNinf (set in doinfluence.sh)
   # Npix=residual map dimension Npix x Npix
-  def __init__(self, K=2, Nf=3, Ninf=128, Npix=1024, Tdelta=10):
+  def __init__(self, K=2, Nf=3, Ninf=128, Npix=1024, Tdelta=10, provide_hint=False):
     super(DemixingEnv, self).__init__()
     # Define action and observation space
     # action space dim=number of outlier clusters=vector (K-1)x1, K: number of directions
@@ -70,6 +71,7 @@ class DemixingEnv(gym.Env):
     self.rho=np.ones(self.K,dtype=np.float32)
     # cluster id
     self.rho_id=np.ones(self.K,dtype=int)
+    self.elevation=None
 
     # shell script and command names
     self.cmd_calc_influence='./doinfluence.sh > influence.out'
@@ -80,6 +82,10 @@ class DemixingEnv(gym.Env):
     self.metadata=np.zeros(3*self.K+2,dtype=np.float32)
     self.N=1
     self.prev_clus_id=None
+
+    self.hint=None
+    self.provide_hint=provide_hint
+    self.tau=100 # temperature, divide AIC by 1/tau before softmin()
 
   def step(self, action):
     done=False # make sure to return True at some point
@@ -99,7 +105,7 @@ class DemixingEnv(gym.Env):
     self.print_clusters_()
     self.output_rho_()
     # run calibration, use --oversubscribe if not enough slots are available
-    sb.run('mpirun -np 3 --oversubscribe '+generate_data.sagecal_mpi+' -f \'L_SB*.MS\'  -A 30 -P 2 -s sky.txt -c '+self.cluster+' -I DATA -O MODEL_DATA -p zsol -G '+self.out_admm_rho+' -n 4 -t '+str(self.Tdelta)+' -V',shell=True)
+    sb.run('mpirun -np 3 --oversubscribe '+generate_data.sagecal_mpi+' -f \'L_SB*.MS\'  -A 10 -P 2 -s sky.txt -c '+self.cluster+' -I DATA -O MODEL_DATA -p zsol -G '+self.out_admm_rho+' -n 4 -t '+str(self.Tdelta),shell=True)
 
     # calculate influence
     sb.run(self.cmd_calc_influence,shell=True)
@@ -115,7 +121,7 @@ class DemixingEnv(gym.Env):
       'infmap': infdata,
       'metadata': metadata_update }
 
-    self.std_residual=self.make_images_(col='MODEL_DATA')
+    self.std_residual=self.get_noise_(col='MODEL_DATA')
 
     # reward ~ 1/(noise (var) reduction) /(clusters calibrated)
     data_var=self.std_data*self.std_data
@@ -133,13 +139,20 @@ class DemixingEnv(gym.Env):
     reward=(reward-(-859))/3559.0
     print('STD %f %f Inf %f K %d N %d reward %f'%(data_var,noise_var,influence_std,Kselected,self.N,reward))
     info={}
-    return observation, reward, done, info
+    # calculate and store the hint for future use
+    if self.provide_hint:
+        if self.hint is None:
+          self.hint=self.get_hint()
+        return observation, reward, done, self.hint, info
+    else:
+        return observation, reward, done, info
 
   def reset(self):
     # run input simulations
     separation,azimuth,elevation,freq,N=simulate_data(Nf=self.Nf)
     # remember stations
     self.N=N
+    self.elevation=elevation
     # read full cluster
     self.Clus=readcluster(self.cluster_full)
     self.initialize_rho_()
@@ -149,12 +162,12 @@ class DemixingEnv(gym.Env):
     self.print_clusters_()
     self.output_rho_()
     # run calibration, use --oversubscribe if not enough slots are available
-    sb.run('mpirun -np 3 --oversubscribe '+generate_data.sagecal_mpi+' -f \'L_SB*.MS\'  -A 30 -P 2 -s sky.txt -c '+self.cluster+' -I DATA -O MODEL_DATA -p zsol -G '+self.out_admm_rho+' -n 4 -t '+str(self.Tdelta)+' -V',shell=True)
+    sb.run('mpirun -np 3 --oversubscribe '+generate_data.sagecal_mpi+' -f \'L_SB*.MS\'  -A 10 -P 2 -s sky.txt -c '+self.cluster+' -I DATA -O MODEL_DATA -p zsol -G '+self.out_admm_rho+' -n 4 -t '+str(self.Tdelta),shell=True)
 
     # calculate influence (image at ./influenceI.fits)
     sb.run(self.cmd_calc_influence,shell=True)
-    self.std_data=self.make_images_(col='DATA')
-    self.std_residual=self.make_images_(col='MODEL_DATA')
+    self.std_data=self.get_noise_(col='DATA')
+    self.std_residual=self.get_noise_(col='MODEL_DATA')
     # concatenate metadata
     metadata=np.zeros(3*self.K+2,dtype=np.float32)
     metadata[:self.K]=separation
@@ -174,24 +187,43 @@ class DemixingEnv(gym.Env):
     self.prev_clus_id=self.clus_id.copy()
     return observation
 
-  # also return the std of average image
-  def make_images_(self,col='DATA'):
+  # return the average std of data
+  def get_noise_(self,col='DATA'):
+    fits_std=np.zeros(self.Nf)
     for ci in range(self.Nf):
       MS='L_SB'+str(ci)+'.MS'
-      sb.run(generate_data.excon+' -m '+MS+' -p 20 -x 0 -c '+col+' -d '+str(self.Npix)+' > /dev/null',shell=True)
-      sb.run('bash ./calmean.sh \'L_SB*.MS_I*fits\' 1 && python calmean_.py && mv bar.fits '+col+'.fits',shell=True)
-    hdu=fits.open(col+'.fits')
-    fitsdata=np.squeeze(hdu[0].data[0])
-    hdu.close()
-    return fitsdata.std()
+      #sb.run(generate_data.excon+' -m '+MS+' -p 20 -x 0 -c '+col+' -d '+str(self.Npix)+' > /dev/null',shell=True)
+      #hdu=fits.open(MS+'_I.fits')
+      #fitsdata=np.squeeze(hdu[0].data[0])
+      #hdu.close()
+      #fits_std[ci]=fitsdata.std()
+      fits_std[ci]=self.get_noise_var_(MS,col)
+    return np.sqrt(np.mean(fits_std**2))
 
+  # extract noise info
+  def get_noise_var_(self,msname,col='DATA'):
+        tt=ctab.table(msname,readonly=True)
+        t1=tt.query('ANTENNA1 != ANTENNA2',columns=col+',FLAG')
+        data0=t1.getcol(col)
+        flag=t1.getcol('FLAG')
+        data=data0*(1-flag)
+        tt.close()
+        # set nans to 0
+        data[np.isnan(data)]=0.
+        # form IQUV
+        sI=(data[:,:,0]+data[:,:,3])*0.5
+        return sI.std()
 
-  def print_clusters_(self):
+  def print_clusters_(self,clus_id=None):
     # print only the clusters in clus_id
     ff=open(self.cluster,'w+')
     ff.write('## Cluster selection\n')
     for ci in self.Clus.keys():
-        if ci in self.clus_id:
+        if clus_id:
+          if ci in clus_id:
+            ff.write(self.Clus[ci])
+        else:
+          if ci in self.clus_id:
             ff.write(self.Clus[ci])
     ff.close()
 
@@ -208,25 +240,73 @@ class DemixingEnv(gym.Env):
              # ignore hybrid parameter (==1)
              ci +=1
 
-  def output_rho_(self):
+  def output_rho_(self,clus_id=None):
     # write rho to text file
     fh=open(self.out_admm_rho,'w+')
     fh.write('## format\n')
     fh.write('## cluster_id hybrid admm_rho\n')
-    for ci in self.clus_id:
-      fh.write(str(self.rho_id[ci])+' '+str(1)+' '+str(self.rho[ci])+'\n')
+    if clus_id:
+      for ci in clus_id:
+        fh.write(str(self.rho_id[ci])+' '+str(1)+' '+str(self.rho[ci])+'\n')
+    else:
+      for ci in self.clus_id:
+        fh.write(str(self.rho_id[ci])+' '+str(1)+' '+str(self.rho[ci])+'\n')
     fh.close()
+
+  @staticmethod
+  def scalar_to_kvec(n,K=5):
+    # convert integer to binary bits, return array of size K
+    ll=[1 if digit=='1' else 0 for digit in bin(n)[2:]]
+    a=np.zeros(K)
+    a[-len(ll):]=ll
+    return a
+
+  def get_hint(self):
+    # iterate over all possible actions
+    AIC=np.zeros(2**(self.K-1))
+    for index in range(2**(self.K-1)):
+        action=self.scalar_to_kvec(index,self.K-1)
+        # check if there are -ve elevation clusters
+        # if so, give a high AIC
+        chosen_el=itertools.compress(self.elevation[:-1],action)
+        any_neg_dir=any([x<1 for x in chosen_el])
+        if any_neg_dir:
+           AIC[index]=1e5
+        else:
+           indices=np.where(action>0)
+           clus_id=np.unique(indices[0]).tolist()
+           clus_id.append(self.K-1)
+           Kselected=len(clus_id)
+           self.print_clusters_(clus_id)
+           self.output_rho_(clus_id)
+           sb.run('mpirun -np 3 --oversubscribe '+generate_data.sagecal_mpi+' -f \'L_SB*.MS\'  -A 10 -P 2 -s sky.txt -c '+self.cluster+' -I DATA -O MODEL_DATA -p zsol -G '+self.out_admm_rho+' -n 4 -t '+str(self.Tdelta),shell=True)
+           # calculate noise
+           std_residual=self.get_noise_(col='MODEL_DATA')
+           AIC[index]=(self.N*std_residual/self.std_data)**2+Kselected*self.N
+
+    # take softmin
+    probs=np.exp(-AIC/self.tau)/np.sum(np.exp(-AIC/self.tau))
+    print(AIC)
+    print(probs)
+    return probs
+
 
   def render(self, mode='human'):
     print('%%%%%%%%%%%%%%%%%%%%%%')
-    print(self.rho)
+    print('Render not implemented')
     print('%%%%%%%%%%%%%%%%%%%%%%')
 
   def close (self):
     pass
 
+  def __del__(self):
+    for ci in range(self.Nf):
+       MS='L_SB'+str(ci)+'.MS'
+       sb.run('rm -rf '+MS,shell=True)
+
 #dem=DemixingEnv(K=6,Nf=3,Ninf=128,Npix=1024,Tdelta=10)
 #obs=dem.reset()
+#hint=dem.get_hint()
 #sb.run('mv influenceI.fits inf0.fits',shell=True)
 #sb.run('mv MODEL_DATA.fits MODEL0.fits',shell=True)
 #action=np.zeros(5)

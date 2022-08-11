@@ -30,15 +30,17 @@ class ReplayBuffer(object):
         self.action_memory = np.zeros((self.mem_size,n_actions), dtype=np.float32)
         self.reward_memory = np.zeros(self.mem_size, dtype=np.float32)
         self.terminal_memory = np.zeros(self.mem_size, dtype=bool)
+        self.hint_memory = np.zeros((self.mem_size,n_actions), dtype=np.float32)
         self.filename='replaymem_sac.model' # for saving object
 
-    def store_transition(self, state, action, reward, state_, done):
+    def store_transition(self, state, action, reward, state_, done, hint):
         index = self.mem_cntr % self.mem_size
         self.action_memory[index] = action
         self.reward_memory[index] = reward
         self.terminal_memory[index] = done
         self.state_memory[index] = T.cat((state['eig'],state['A']))
         self.new_state_memory[index] = T.cat((state_['eig'],state_['A']))
+        self.hint_memory[index] = hint
 
         self.mem_cntr += 1
 
@@ -51,8 +53,9 @@ class ReplayBuffer(object):
         rewards = self.reward_memory[batch]
         states_ = self.new_state_memory[batch]
         terminal = self.terminal_memory[batch]
+        hint = self.hint_memory[batch]
 
-        return states, actions, rewards, states_, terminal
+        return states, actions, rewards, states_, terminal, hint
 
     def save_checkpoint(self):
         with open(self.filename,'wb') as f:
@@ -68,6 +71,7 @@ class ReplayBuffer(object):
           self.action_memory=temp.action_memory
           self.reward_memory=temp.reward_memory
           self.terminal_memory=temp.terminal_memory
+          self.hint_memory=temp.hint_memory
  
 ########################################
 # Prioritized experience replay memory
@@ -222,6 +226,7 @@ class PER(object):  # stored as ( s, a, r, s_new, done ) in SumTree
         self.action_memory=np.zeros((self.mem_size,n_actions),dtype=np.float32)
         self.reward_memory=np.zeros(self.mem_size,dtype=np.float32)
         self.terminal_memory=np.zeros(self.mem_size,dtype=bool)
+        self.hint_memory=np.zeros((self.mem_size,n_actions),dtype=np.float32)
         self.filename='prioritized_replaymem_sac.model'
     
     def __len__(self):
@@ -230,7 +235,7 @@ class PER(object):  # stored as ( s, a, r, s_new, done ) in SumTree
     def is_full(self):
         return len(self.tree) >= self.tree.capacity
     
-    def store_transition(self, state, action, reward, state_, done, error = None):
+    def store_transition(self, state, action, reward, state_, done, hint, error = None):
         if error is None:
             priority = np.amax(self.tree.tree[-self.tree.capacity:])
             if priority == 0: priority = self.absolute_error_upper
@@ -242,11 +247,12 @@ class PER(object):  # stored as ( s, a, r, s_new, done ) in SumTree
         self.terminal_memory[index]=done
         self.state_memory[index] = T.cat((state['eig'],state['A']))
         self.new_state_memory[index] = T.cat((state_['eig'],state_['A']))
+        self.hint_memory[index]=hint
 
         self.mem_cntr+=1
 
     # method to copy replaymemory from another buffer into self
-    def store_transition_from_buffer(self, state, action, reward, state_, done, error = None):
+    def store_transition_from_buffer(self, state, action, reward, state_, done, hint, error = None):
         if error is None:
             priority = np.amax(self.tree.tree[-self.tree.capacity:])
             if priority == 0: priority = self.absolute_error_upper
@@ -258,6 +264,7 @@ class PER(object):  # stored as ( s, a, r, s_new, done ) in SumTree
         self.terminal_memory[index]=done
         self.state_memory[index] = state
         self.new_state_memory[index] = state_
+        self.hint_memory[index]=hint
 
         self.mem_cntr+=1
     
@@ -302,7 +309,8 @@ class PER(object):  # stored as ( s, a, r, s_new, done ) in SumTree
         rewards=self.reward_memory[data_idxs]
         states_=self.new_state_memory[data_idxs]
         terminal=self.terminal_memory[data_idxs]
-        return states, actions, rewards, states_, terminal, idxs, is_weights
+        hints=self.hint_memory[data_idxs]
+        return states, actions, rewards, states_, terminal, hints, idxs, is_weights
     
     def batch_update(self, idxs, errors):
         #"""
@@ -336,6 +344,7 @@ class PER(object):  # stored as ( s, a, r, s_new, done ) in SumTree
             self.action_memory=temp.action_memory
             self.reward_memory=temp.reward_memory
             self.terminal_memory=temp.terminal_memory
+            self.hint_memory=temp.hint_memory
 
 ########################################
 
@@ -513,7 +522,7 @@ class ActorNetwork(nn.Module):
 
 class Agent():
     def __init__(self, gamma, lr_a, lr_c, input_dims, batch_size, n_actions,
-            max_mem_size=100, tau=0.001, reward_scale=2, prioritized=False):
+            max_mem_size=100, tau=0.001, reward_scale=2, prioritized=False, use_hint=False):
         self.gamma = gamma
         self.tau=tau
         self.batch_size = batch_size
@@ -542,6 +551,10 @@ class Agent():
         # initialize targets (hard copy)
         self.update_network_parameters(tau=1.)
 
+        self.use_hint=use_hint
+        self.admm_rho=0.1
+        self.Nadmm=5
+
     def update_network_parameters(self, tau=None):
         if tau is None:
             tau = self.tau
@@ -555,11 +568,11 @@ class Agent():
                                       (1-tau)*target_v_dict[name].clone()
         self.target_value.load_state_dict(target_v_dict)
 
-    def store_transition(self, state, action, reward, state_, terminal):
+    def store_transition(self, state, action, reward, state_, terminal, hint):
         if not self.prioritized:
-          self.replaymem.store_transition(state,action,reward,state_,terminal)
+          self.replaymem.store_transition(state,action,reward,state_,terminal, hint)
         else:
-          self.replaymem.store_transition(state,action,reward,state_,terminal,reward)
+          self.replaymem.store_transition(state,action,reward,state_,terminal, hint)
 
     def choose_action(self, observation):
         state = T.cat((observation['eig'],observation['A'])).to(mydevice)
@@ -574,10 +587,10 @@ class Agent():
             return
 
         if not self.prioritized:
-           state, action, reward, new_state, done = \
+           state, action, reward, new_state, done, hint = \
                                 self.replaymem.sample_buffer(self.batch_size)
         else:
-           state, action, reward, new_state, done, idxs, is_weights = \
+           state, action, reward, new_state, done, hint, idxs, is_weights = \
                                 self.replaymem.sample_buffer(self.batch_size)
 
         state_batch = T.tensor(state).to(mydevice)
@@ -585,6 +598,7 @@ class Agent():
         action_batch = T.tensor(action).to(mydevice)
         reward_batch = T.tensor(reward).to(mydevice)
         terminal_batch = T.tensor(done).to(mydevice)
+        hint_batch = T.tensor(hint).to(mydevice)
         
         if self.prioritized:
             is_weight=T.tensor(is_weights).to(mydevice)
@@ -609,22 +623,50 @@ class Agent():
         value_loss.backward(retain_graph=True)
         self.value.optimizer.step()
 
-        actions, log_probs = self.actor.sample_normal(state_batch, reparameterize=True)
-        log_probs = log_probs.view(-1)
-        q1_new_policy = self.critic_1.forward(state_batch, actions)
-        q2_new_policy = self.critic_2.forward(state_batch, actions)
-        critic_value = T.min(q1_new_policy, q2_new_policy)
-        critic_value = critic_value.view(-1)
 
-        actor_loss = log_probs - critic_value
-        if not self.prioritized:
-          actor_loss = T.mean(actor_loss)
+        if not self.use_hint:
+          actions, log_probs = self.actor.sample_normal(state_batch, reparameterize=True)
+          q1_new_policy = self.critic_1.forward(state_batch, actions)
+          q2_new_policy = self.critic_2.forward(state_batch, actions)
+          critic_value = T.min(q1_new_policy, q2_new_policy)
+          critic_value = critic_value.view(-1)
+
+          log_probs = log_probs.view(-1)
+
+          actor_loss = log_probs - critic_value
+          if not self.prioritized:
+            actor_loss = T.mean(actor_loss)
+          else:
+            actor_loss = T.mean(actor_loss*is_weight)
+          self.actor.optimizer.zero_grad()
+          actor_loss.backward(retain_graph=True)
+          self.actor.optimizer.step()
         else:
-          actor_loss = T.mean(actor_loss*is_weight)
-        self.actor.optimizer.zero_grad()
-        actor_loss.backward(retain_graph=True)
-        self.actor.optimizer.step()
+          lagrange_y=T.zeros(actions.numel(),requires_grad=False).to(mydevice)
+          hints=hint_batch.view(-1)
+          for admm in range(self.Nadmm):
+             actions, log_probs = self.actor.sample_normal(state_batch, reparameterize=True)
+             q1_new_policy = self.critic_1.forward(state_batch, actions)
+             q2_new_policy = self.critic_2.forward(state_batch, actions)
+             critic_value = T.min(q1_new_policy, q2_new_policy)
+             critic_value = critic_value.view(-1)
 
+             log_probs = log_probs.view(-1)
+             actions = actions.view(-1)
+
+             loss1=(T.dot(lagrange_y,(actions-hints).view(-1))+self.admm_rho/2*F.mse_loss(actions,hints))/(actions.numel())
+             actor_loss = log_probs - critic_value + loss1
+             if not self.prioritized:
+               actor_loss = T.mean(actor_loss)
+             else:
+               actor_loss = T.mean(actor_loss*is_weight)
+             self.actor.optimizer.zero_grad()
+             actor_loss.backward(retain_graph=True)
+             self.actor.optimizer.step()
+
+             with T.no_grad():
+                lagrange_y=lagrange_y+self.admm_rho*(actions-hints).view(-1)
+             
         q_hat = self.scale*reward_batch + self.gamma*value_
         # update priorities in the replay buffer
         if self.prioritized:

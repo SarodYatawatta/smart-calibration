@@ -37,7 +37,7 @@ class Learner:
         # prioritized experience replay mem (PER)
         self.agent=Agent(gamma=0.99, batch_size=64, n_actions=2, tau=0.005,
                   max_mem_size=1024, input_dims=[self.N+self.N*self.M], lr_a=1e-3, lr_c=1e-3,
-                 reward_scale=self.N, prioritized=True)
+                 reward_scale=self.N, prioritized=True, use_hint=True)
 
         self.lock=threading.Lock()
 
@@ -50,7 +50,8 @@ class Learner:
               reward=replaybuffer.reward_memory[i]
               new_state=replaybuffer.new_state_memory[i]
               done=replaybuffer.terminal_memory[i]
-              self.agent.replaymem.store_transition_from_buffer(state,action,reward,new_state,done)
+              hint=replaybuffer.hint_memory[i]
+              self.agent.replaymem.store_transition_from_buffer(state,action,reward,new_state,done,hint)
               self.agent.learn()
 
             print(f'Learner: replaybuffer size {self.agent.replaymem.mem_cntr}')
@@ -107,7 +108,7 @@ class Actor:
         # create env
         self.N=N
         self.M=M
-        self.env=ENetEnv(self.M,self.N)
+        self.env=ENetEnv(self.M,self.N,provide_hint=True)
         
         # create local actor
         self.actor=ActorNetwork(lr=1e-3,input_dims=input_dims, n_actions=n_actions, max_action=1, name='a_'+str(self.id)+'_eval')
@@ -134,8 +135,8 @@ class Actor:
               # get action
               action=self.choose_action(observation)
               # env.step
-              observation_, reward, done, info = self.env.step(action)
-              self.replaymem.store_transition(observation,action,reward,observation_,done)
+              observation_, reward, done, hint, info = self.env.step(action)
+              self.replaymem.store_transition(observation,action,reward,observation_,done,hint)
               observation=observation_
               print(f'Actor: {self.id} {epoch} {ci} {reward}')
 
