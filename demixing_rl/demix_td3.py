@@ -5,6 +5,8 @@ import torch.optim as optim
 import numpy as np
 import pickle # for saving replaymemory
 import os # for saving networks 
+from demix_sac import SumTree
+from demixingenv import DemixingEnv
 
 # (try to) use a GPU for computation?
 use_cuda=True
@@ -18,134 +20,6 @@ def init_layer(layer,sc=None):
   sc = sc or 1./np.sqrt(layer.weight.data.size()[0])
   T.nn.init.uniform_(layer.weight.data, -sc, sc)
   T.nn.init.uniform_(layer.bias.data, -sc, sc)
-
-########################################
-# Prioritized experience replay memory
-# From https://github.com/Ullar-Kask/TD3-PER
-def is_power_of_2 (n):
-    return ((n & (n - 1)) == 0) and n != 0
-
-# A binary tree data structure where the parent’s value is the sum of its children
-class SumTree():
-    #"""
-    #This SumTree code is modified version of the code from:
-    #https://github.com/jaara/AI-blog/blob/master/SumTree.py
-    #https://github.com/simoninithomas/Deep_reinforcement_learning_Course/blob/master/Dueling%20Double%20DQN%20with%20PER%20and%20fixed-q%20targets/Dueling%20Deep%20Q%20Learning%20with%20Doom%20(%2B%20double%20DQNs%20and%20Prioritized%20Experience%20Replay).ipynb
-    #For explanations please see:
-    #https://jaromiru.com/2016/11/07/lets-make-a-dqn-double-learning-and-prioritized-experience-replay/
-    #"""
-    data_pointer = 0
-    data_length = 0
-    
-    def __init__(self, capacity):
-        # Initialize the tree with all nodes = 0,
-        
-        # Number of leaf nodes (final nodes) that contains experiences
-        # Should be power of 2.
-        self.capacity = int(capacity)
-        assert is_power_of_2(self.capacity), "Capacity must be power of 2."
-        
-        # Generate the tree with all nodes values = 0
-        # To understand this calculation (2 * capacity - 1) look at the schema above
-        # Remember we are in a binary node (each node has max 2 children) so 2x size of leaf (capacity) - 1 (root node)
-        # Parent nodes = capacity - 1
-        # Leaf nodes = capacity
-        self.tree = np.zeros(2 * capacity - 1)
-        
-        #""" tree:
-        #    0
-        #   / \
-        #  0   0
-        # / \ / \
-        #0  0 0  0  [Size: capacity] it's at this line where the priority scores are stored
-        #"""
-        
-        # Contains the experiences (so the size of data is capacity)
-        #self.data = np.zeros(capacity, dtype=object)
-    
-    def __len__(self):
-        return self.data_length
-    
-    def add(self, priority):
-        # Look at what index we want to put the experience
-        tree_index = self.data_pointer + self.capacity - 1
-        # Index to update data frame
-        data_index=self.data_pointer
-        #self.data[self.data_pointer] = data
-        # Update the leaf
-        self.update (tree_index, priority)
-        # Add 1 to data_pointer
-        self.data_pointer += 1
-        if self.data_pointer >= self.capacity:
-            self.data_pointer = 0
-        if self.data_length < self.capacity:
-            self.data_length += 1
-        return data_index
-    
-    def update(self, tree_index, priority):
-        # change = new priority score - former priority score
-        change = priority - self.tree[tree_index]
-        self.tree[tree_index] = priority
-        
-        # then propagate the change through tree
-        while tree_index != 0:
-            #"""
-            #Here we want to access the line above
-            #THE NUMBERS IN THIS TREE ARE THE INDEXES NOT THE PRIORITY VALUES
-            # 
-            #    0
-            #   / \
-            #  1   2
-            # / \ / \
-            #3  4 5  [6] 
-            # 
-            #If we are in leaf at index 6, we updated the priority score
-            #We need then to update index 2 node
-            #So tree_index = (tree_index - 1) // 2
-            #tree_index = (6-1)//2
-            #tree_index = 2 (because // round the result)
-            #"""
-            tree_index = (tree_index - 1) // 2
-            self.tree[tree_index] += change    
-    
-    def get_leaf(self, v):
-        # Get the leaf_index, priority value of that leaf and experience associated with that index
-        #"""
-        #Tree structure and array storage:
-        #Tree index:
-        #     0         -> storing priority sum
-        #    / \
-        #  1     2
-        # / \   / \
-        #3   4 5   6    -> storing priority for experiences
-        #Array type for storing:
-        #[0,1,2,3,4,5,6]
-        #"""
-        parent_index = 0
-        
-        while True: # the while loop is faster than the method in the reference code
-            left_child_index = 2 * parent_index + 1
-            right_child_index = left_child_index + 1
-            
-            # If we reach bottom, end the search
-            if left_child_index >= len(self.tree):
-                leaf_index = parent_index
-                break
-            else: # downward search, always search for a higher priority node
-                if v <= self.tree[left_child_index]:
-                    parent_index = left_child_index
-                else:
-                    v -= self.tree[left_child_index]
-                    parent_index = right_child_index
-        
-        data_index = leaf_index - self.capacity + 1
-        
-        return leaf_index, self.tree[leaf_index], data_index
-    
-    @property
-    def total_priority(self):
-        return self.tree[0]  # the root
-
 
 class PER(object):  # stored as ( s, a, r, s_new, done ) in SumTree
     #"""
@@ -175,6 +49,7 @@ class PER(object):  # stored as ( s, a, r, s_new, done ) in SumTree
         self.action_memory=np.zeros((self.mem_size,n_actions),dtype=np.float32)
         self.reward_memory=np.zeros(self.mem_size,dtype=np.float32)
         self.terminal_memory=np.zeros(self.mem_size,dtype=bool)
+        self.hint_memory=np.zeros((self.mem_size,n_actions),dtype=np.float32)
         self.filename='prioritized_replaymem_td3.model'
     
     def __len__(self):
@@ -183,7 +58,7 @@ class PER(object):  # stored as ( s, a, r, s_new, done ) in SumTree
     def is_full(self):
         return len(self.tree) >= self.tree.capacity
     
-    def store_transition(self, state, action, reward, state_, done, error = None):
+    def store_transition(self, state, action, reward, state_, done, hint, error = None):
         if error is None:
             priority = np.amax(self.tree.tree[-self.tree.capacity:])
             if priority == 0: priority = self.absolute_error_upper
@@ -197,6 +72,7 @@ class PER(object):  # stored as ( s, a, r, s_new, done ) in SumTree
         self.state_memory_sky[index] = state['metadata']
         self.new_state_memory_img[index] = state_['infmap']
         self.new_state_memory_sky[index] = state_['metadata']
+        self.hint_memory[index]=hint
 
         self.mem_cntr+=1
     
@@ -243,7 +119,8 @@ class PER(object):  # stored as ( s, a, r, s_new, done ) in SumTree
         states_={ 'infmap':self.new_state_memory_img[data_idxs],
                 'metadata':self.new_state_memory_sky[data_idxs] }
         terminal=self.terminal_memory[data_idxs]
-        return states, actions, rewards, states_, terminal, idxs, is_weights
+        hints=self.hint_memory[data_idxs]
+        return states, actions, rewards, states_, terminal, hints, idxs, is_weights
     
     def batch_update(self, idxs, errors):
         #"""
@@ -279,6 +156,7 @@ class PER(object):  # stored as ( s, a, r, s_new, done ) in SumTree
             self.action_memory=temp.action_memory
             self.reward_memory=temp.reward_memory
             self.terminal_memory=temp.terminal_memory
+            self.hint_memory=temp.hint_memory
 
     # normalize rewards
     def normalize_reward(self):
@@ -300,9 +178,10 @@ class ReplayBuffer(object):
         self.action_memory = np.zeros((self.mem_size,n_actions), dtype=np.float32)
         self.reward_memory = np.zeros(self.mem_size, dtype=np.float32)
         self.terminal_memory = np.zeros(self.mem_size, dtype=np.bool)
+        self.hint_memory = np.zeros((self.mem_size,n_actions), dtype=np.float32)
         self.filename='replaymem_td3.model' # for saving object
 
-    def store_transition(self, state, action, reward, state_, done):
+    def store_transition(self, state, action, reward, state_, done, hint):
         index = self.mem_cntr % self.mem_size
         self.action_memory[index] = action
         self.reward_memory[index] = reward
@@ -311,6 +190,7 @@ class ReplayBuffer(object):
         self.state_memory_sky[index] = state['metadata']
         self.new_state_memory_img[index] = state_['infmap']
         self.new_state_memory_sky[index] = state_['metadata']
+        self.hint_memory[index]=hint
 
         self.mem_cntr += 1
 
@@ -325,8 +205,9 @@ class ReplayBuffer(object):
         states_ = {'infmap': self.new_state_memory_img[batch],
                   'metadata': self.new_state_memory_sky[batch]}
         terminal = self.terminal_memory[batch]
+        hint=self.hint_memory[batch]
 
-        return states, actions, rewards, states_, terminal
+        return states, actions, rewards, states_, terminal, hint
 
     def save_checkpoint(self):
         with open(self.filename,'wb') as f:
@@ -344,6 +225,8 @@ class ReplayBuffer(object):
           self.action_memory=temp.action_memory
           self.reward_memory=temp.reward_memory
           self.terminal_memory=temp.terminal_memory
+          self.hint_hint=temp.hint_memory
+
 
 # input: state,action output: q-value
 class CriticNetwork(nn.Module):
@@ -480,7 +363,7 @@ class ActorNetwork(nn.Module):
 
 class DemixingAgent():
     def __init__(self, gamma, lr_a, lr_c, input_dims, batch_size, n_actions,
-            max_mem_size=100, tau=0.001, M=30, update_actor_interval=2, warmup=1000, noise=0.1):
+            max_mem_size=100, tau=0.001, M=30, update_actor_interval=2, warmup=1000, noise=0.1, use_hint=False):
         # Note: M is metadata size
         self.gamma = gamma
         self.tau=tau
@@ -513,6 +396,10 @@ class DemixingAgent():
         # noise fraction
         self.noise = noise
 
+        self.use_hint=use_hint
+        self.admm_rho=0.1
+        self.Nadmm=5
+
         # initialize targets (hard copy)
         self.update_network_parameters(tau=1.)
 
@@ -543,8 +430,13 @@ class DemixingAgent():
         self.target_critic_2.load_state_dict(critic_state_dict)
 
 
-    def store_transition(self, state, action, reward, state_, terminal):
-        self.replaymem.store_transition(state,action,reward,state_,terminal)
+    def store_transition(self, state, action, reward, state_, terminal, hint):
+        # map hint in 2**(K-1) to K vector
+        hintK=np.zeros(self.n_actions)
+        for ci in range(2**(self.n_actions)):
+              hintK+=hint[ci]*DemixingEnv.scalar_to_kvec(ci,self.n_actions)
+
+        self.replaymem.store_transition(state,action,reward,state_,terminal, hintK)
 
     def choose_action(self, observation):
         if self.time_step<self.warmup:
@@ -572,10 +464,10 @@ class DemixingAgent():
 
         
         if not self.prioritized:
-          state, action, reward, new_state, done = \
+          state, action, reward, new_state, done, hint = \
                                  self.replaymem.sample_buffer(self.batch_size)
         else:
-          state, action, reward, new_state, done, idxs, is_weights = \
+          state, action, reward, new_state, done, hint, idxs, is_weights = \
                                 self.replaymem.sample_buffer(self.batch_size)
  
         batch_index = np.arange(self.batch_size, dtype=np.int32)
@@ -587,6 +479,7 @@ class DemixingAgent():
         action_batch = T.tensor(action).to(mydevice)
         reward_batch = T.tensor(reward).to(mydevice)
         terminal_batch = T.tensor(done).to(mydevice)
+        hint_batch= T.tensor(hint).to(mydevice)
 
         if self.prioritized:
             is_weight=T.tensor(is_weights).to(mydevice)
@@ -642,13 +535,41 @@ class DemixingAgent():
 
         if self.learn_step_cntr % self.update_actor_interval == 0:
           self.actor.train()
-          self.actor.optimizer.zero_grad()
-          actor_q1_loss = self.critic_1.forward(state_batch, self.actor.forward(state_batch,  state_batch_sky), state_batch_sky)
-          actor_loss = -T.mean(actor_q1_loss)
-          actor_loss.backward()
-          self.actor.optimizer.step()
+
+          if not self.use_hint:
+            self.actor.optimizer.zero_grad()
+            actor_q1_loss = self.critic_1.forward(state_batch, self.actor.forward(state_batch,  state_batch_sky), state_batch_sky)
+            if not self.prioritized:
+               actor_loss = -T.mean(actor_q1_loss)
+            else:
+               actor_loss = -T.mean(actor_q1_loss*is_weight)
+            actor_loss.backward()
+            self.actor.optimizer.step()
+          else:
+            lagrange_y=T.zeros(hint_batch.numel(),requires_grad=False).to(mydevice)
+            for admm in range(self.Nadmm):
+               self.actor.optimizer.zero_grad()
+               actions=self.actor.forward(state_batch,  state_batch_sky)
+               actor_q1_loss = self.critic_1.forward(state_batch, actions, state_batch_sky)
+               if not self.prioritized:
+                 actor_loss = -T.mean(actor_q1_loss)
+               else:
+                 actor_loss = -T.mean(actor_q1_loss*is_weight)
+               diff1=(actions-hint_batch).view(-1)
+               if not self.prioritized:
+                 loss1=(T.dot(lagrange_y,diff1)+self.admm_rho/2*F.mse_loss(actions,hint_batch)).mean()/actions.numel()
+               else:
+                 loss1=((T.dot(lagrange_y,diff1)+self.admm_rho/2*F.mse_loss(actions,hint_batch))*is_weight).mean()/actions.numel()
+               actor_loss=actor_loss+loss1
+               print('Actor loss')
+               print(loss1.data.item(),actor_loss.data.item())
+               actor_loss.backward()
+               self.actor.optimizer.step()
+               with T.no_grad():
+                  lagrange_y=lagrange_y+self.admm_rho*(actions-hint_batch).view(-1)
 
           self.update_network_parameters()
+
 
     def save_models(self):
         self.actor.save_checkpoint()
