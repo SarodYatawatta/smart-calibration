@@ -627,7 +627,6 @@ class DemixingAgent():
 
         self.critic_1.optimizer.zero_grad()
         self.critic_2.optimizer.zero_grad()
-        self.actor.optimizer.zero_grad()
         self.alpha_optimizer.zero_grad()
 
         critic_1_loss, critic_2_loss =\
@@ -640,12 +639,14 @@ class DemixingAgent():
 
         if not self.use_hint:
             actor_loss, log_action_probabilities=self.actor_loss_without_hint(state_batch,state_batch_sky, is_weight)
+            self.actor.optimizer.zero_grad()
             actor_loss.backward()
             self.actor.optimizer.step()
         else:
            lagrange_y=T.zeros(hint_batch.numel(),requires_grad=False).to(mydevice)
            for admm in range(self.Nadmm):
               actor_loss, actions, log_action_probabilities=self.actor_loss(state_batch,state_batch_sky, lagrange_y, hint_batch, is_weight)
+              self.actor.optimizer.zero_grad()
               actor_loss.backward(retain_graph=True)
               self.actor.optimizer.step()
               with T.no_grad():
