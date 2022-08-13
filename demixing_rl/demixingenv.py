@@ -185,6 +185,8 @@ class DemixingEnv(gym.Env):
       'metadata': metadata }
     # remember current action taken
     self.prev_clus_id=self.clus_id.copy()
+
+    self.hint=None
     return observation
 
   # return the average std of data
