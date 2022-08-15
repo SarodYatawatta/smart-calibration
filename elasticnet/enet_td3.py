@@ -337,24 +337,28 @@ class Agent():
                       lagrange_y0=actions.view(-1).detach().clone()
                       actions0=actions.view(-1).detach().clone()
                     elif admm%3==0 and admm<self.Nadmm-1:
-                      deltay=(lagrange_y+admm_rho*(actions-hint_batch).view(-1) - lagrange_y0)
+                      lagrange_y1=lagrange_y+admm_rho*(actions-hint_batch).view(-1)
+                      deltay=lagrange_y1 - lagrange_y0
                       deltau=actions.view(-1).detach() - actions0
                       delta11=T.dot(deltay,deltay)
                       delta12=T.dot(deltay,deltau)
                       delta22=T.dot(deltau,deltau)
-                      alpha=delta12/T.sqrt(delta11*delta22)
-                      alpha_sd=delta11/delta12
-                      alpha_mg=delta12/delta22
+                      lagrange_y0=lagrange_y1
+                      actions0=actions.view(-1).detach().clone()
+                      if delta11>0 and delta12>0 and delta22>0:
+                        alpha=delta12/T.sqrt(delta11*delta22)
+                        alpha_sd=delta11/delta12
+                        alpha_mg=delta12/delta22
 
-                      if 2*alpha_mg > alpha_sd:
-                        alpha_hat=alpha_mg
-                      else:
-                        alpha_hat=alpha_sd-0.5*alpha_mg
+                        if 2*alpha_mg > alpha_sd:
+                          alpha_hat=alpha_mg
+                        else:
+                          alpha_hat=alpha_sd-0.5*alpha_mg
 
-                      if alpha>self.corr_min:
-                        admm_rho=alpha_hat
+                        if alpha>self.corr_min:
+                          admm_rho=alpha_hat
 
-                      #print(f'{admm} d11={delta11} d12={delta12} d22={delta22} alpha={alpha} sd={alpha_sd} mg={alpha_mg} ahat={alpha_hat} rho={admm_rho}')
+                        #print(f'{admm} d11={delta11} d12={delta12} d22={delta22} alpha={alpha} sd={alpha_sd} mg={alpha_mg} ahat={alpha_hat} rho={admm_rho}')
 
 
           self.update_network_parameters()

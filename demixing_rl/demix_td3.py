@@ -397,8 +397,10 @@ class DemixingAgent():
         self.noise = noise
 
         self.use_hint=use_hint
-        self.admm_rho=0.1
-        self.Nadmm=5
+        self.admm_rho=0.1 # nominal value, will be updated in adaptive ADMM
+        self.Nadmm=10
+        self.adaptive_admm=True
+        self.corr_min=0.5 # minimum correlation for accepting an update
 
         # initialize targets (hard copy)
         self.update_network_parameters(tau=1.)
@@ -547,6 +549,9 @@ class DemixingAgent():
             self.actor.optimizer.step()
           else:
             lagrange_y=T.zeros(hint_batch.numel(),requires_grad=False).to(mydevice)
+            lagrange_y0=None
+            actions0=None
+            admm_rho=self.admm_rho
             for admm in range(self.Nadmm):
                self.actor.optimizer.zero_grad()
                actions=self.actor.forward(state_batch,  state_batch_sky)
@@ -557,16 +562,46 @@ class DemixingAgent():
                  actor_loss = -T.mean(actor_q1_loss*is_weight)
                diff1=(actions-hint_batch).view(-1)
                if not self.prioritized:
-                 loss1=(T.dot(lagrange_y,diff1)+self.admm_rho/2*F.mse_loss(actions,hint_batch)).mean()/actions.numel()
+                 loss1=(T.dot(lagrange_y,diff1)+admm_rho/2*F.mse_loss(actions,hint_batch)).mean()/actions.numel()
                else:
-                 loss1=((T.dot(lagrange_y,diff1)+self.admm_rho/2*F.mse_loss(actions,hint_batch))*is_weight).mean()/actions.numel()
+                 loss1=((T.dot(lagrange_y,diff1)+admm_rho/2*F.mse_loss(actions,hint_batch))*is_weight).mean()/actions.numel()
                actor_loss=actor_loss+loss1
                print('Actor loss')
                print(loss1.data.item(),actor_loss.data.item())
                actor_loss.backward()
                self.actor.optimizer.step()
                with T.no_grad():
-                  lagrange_y=lagrange_y+self.admm_rho*(actions-hint_batch).view(-1)
+                  lagrange_y=lagrange_y+admm_rho*(actions-hint_batch).view(-1)
+                  # adaptive ADMM
+                  if self.adaptive_admm:
+                    # initialize y0 and action0
+                    if admm==0:
+                      lagrange_y0=actions.view(-1).detach().clone()
+                      actions0=actions.view(-1).detach().clone()
+                    elif admm%3==0 and admm<self.Nadmm-1:
+                      lagrange_y1=lagrange_y+admm_rho*(actions-hint_batch).view(-1)
+                      deltay=lagrange_y1 - lagrange_y0
+                      deltau=actions.view(-1).detach() - actions0
+                      delta11=T.dot(deltay,deltay)
+                      delta12=T.dot(deltay,deltau)
+                      delta22=T.dot(deltau,deltau)
+                      lagrange_y0=lagrange_y1
+                      actions0=actions.view(-1).detach().clone()
+                      if delta11>0 and delta12>0 and delta22>0:
+                        alpha=delta12/T.sqrt(delta11*delta22)
+                        alpha_sd=delta11/delta12
+                        alpha_mg=delta12/delta22
+
+                        if 2*alpha_mg > alpha_sd:
+                          alpha_hat=alpha_mg
+                        else:
+                          alpha_hat=alpha_sd-0.5*alpha_mg
+
+                        if alpha>self.corr_min:
+                          admm_rho=alpha_hat
+
+                        #print(f'{admm} d11={delta11} d12={delta12} d22={delta22} alpha={alpha} sd={alpha_sd} mg={alpha_mg} ahat={alpha_hat} rho={admm_rho}')
+
 
           self.update_network_parameters()
 
