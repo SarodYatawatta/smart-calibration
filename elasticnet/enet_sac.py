@@ -552,8 +552,10 @@ class Agent():
         self.update_network_parameters(tau=1.)
 
         self.use_hint=use_hint
-        self.admm_rho=0.1
-        self.Nadmm=5
+        self.admm_rho=0.1 # nominal value, will be updated in adaptive ADMM
+        self.Nadmm=10
+        self.adaptive_admm=True
+        self.corr_min=0.5 # minimum correlation for accepting an update
 
     def update_network_parameters(self, tau=None):
         if tau is None:
@@ -644,6 +646,9 @@ class Agent():
         else:
           lagrange_y=T.zeros(actions.numel(),requires_grad=False).to(mydevice)
           hints=hint_batch.view(-1)
+          lagrange_y0=None
+          actions0=None
+          admm_rho=self.admm_rho
           for admm in range(self.Nadmm):
              actions, log_probs = self.actor.sample_normal(state_batch, reparameterize=True)
              q1_new_policy = self.critic_1.forward(state_batch, actions)
@@ -654,7 +659,7 @@ class Agent():
              log_probs = log_probs.view(-1)
              actions = actions.view(-1)
 
-             loss1=(T.dot(lagrange_y,(actions-hints).view(-1))+self.admm_rho/2*F.mse_loss(actions,hints))/(actions.numel())
+             loss1=(T.dot(lagrange_y,(actions-hints).view(-1))+admm_rho/2*F.mse_loss(actions,hints))/(actions.numel())
              actor_loss = log_probs - critic_value + loss1
              if not self.prioritized:
                actor_loss = T.mean(actor_loss)
@@ -665,7 +670,33 @@ class Agent():
              self.actor.optimizer.step()
 
              with T.no_grad():
-                lagrange_y=lagrange_y+self.admm_rho*(actions-hints).view(-1)
+                lagrange_y=lagrange_y+admm_rho*(actions-hints).view(-1)
+                # adaptive ADMM
+                if self.adaptive_admm:
+                    # initialize y0 and action0
+                    if admm==0:
+                      lagrange_y0=actions.view(-1).detach().clone()
+                      actions0=actions.view(-1).detach().clone()
+                    elif admm%3==0 and admm<self.Nadmm-1:
+                      deltay=(lagrange_y+admm_rho*(actions-hints).view(-1) - lagrange_y0)
+                      deltau=actions.view(-1).detach() - actions0
+                      delta11=T.dot(deltay,deltay)
+                      delta12=T.dot(deltay,deltau)
+                      delta22=T.dot(deltau,deltau)
+                      alpha=delta12/T.sqrt(delta11*delta22)
+                      alpha_sd=delta11/delta12
+                      alpha_mg=delta12/delta22
+
+                      if 2*alpha_mg > alpha_sd:
+                        alpha_hat=alpha_mg
+                      else:
+                        alpha_hat=alpha_sd-0.5*alpha_mg
+
+                      if alpha>self.corr_min:
+                        admm_rho=alpha_hat
+
+                      #print(f'{admm} d11={delta11} d12={delta12} d22={delta22} alpha={alpha} sd={alpha_sd} mg={alpha_mg} ahat={alpha_hat} rho={admm_rho}')
+
              
         q_hat = self.scale*reward_batch + self.gamma*value_
         # update priorities in the replay buffer
