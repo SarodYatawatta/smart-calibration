@@ -398,7 +398,7 @@ class DemixingAgent():
 
         self.use_hint=use_hint
         self.admm_rho=0.1 # nominal value, will be updated in adaptive ADMM
-        self.Nadmm=10
+        self.Nadmm=5
         self.adaptive_admm=True
         self.corr_min=0.5 # minimum correlation for accepting an update
 
@@ -587,6 +587,8 @@ class DemixingAgent():
                       delta22=T.dot(deltau,deltau)
                       lagrange_y0=lagrange_y1
                       actions0=actions.view(-1).detach().clone()
+
+                      print(f'{admm} d11={delta11} d12={delta12} d22={delta22}')
                       if delta11>0 and delta12>0 and delta22>0:
                         alpha=delta12/T.sqrt(delta11*delta22)
                         alpha_sd=delta11/delta12
@@ -597,7 +599,7 @@ class DemixingAgent():
                         else:
                           alpha_hat=alpha_sd-0.5*alpha_mg
 
-                        if alpha>self.corr_min:
+                        if alpha>self.corr_min and alpha_hat<10*self.admm_rho and alpha_hat>0.1*self.admm_rho:
                           admm_rho=alpha_hat
 
                         #print(f'{admm} d11={delta11} d12={delta12} d22={delta22} alpha={alpha} sd={alpha_sd} mg={alpha_mg} ahat={alpha_hat} rho={admm_rho}')
