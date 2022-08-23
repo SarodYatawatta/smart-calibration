@@ -18,11 +18,8 @@ if use_cuda and torch.cuda.is_available():
 else:
   mydevice=torch.device('cpu')
 
-#LOW=1e-9
-#HIGH=1e9
-# for starting off, use tighter bound
-LOW=0.001
-HIGH=0.100
+LOW=np.log(1e-3)
+HIGH=np.log(1e-1)
 class ENetEnv(gym.Env):
   """Elastic Net Custom Environment that follows gym interface"""
   metadata = {'render.modes': ['human']}
@@ -75,20 +72,20 @@ class ENetEnv(gym.Env):
   def step(self, action, keepnoise=False):
     done=False # make sure to return True at some point
     # update state based on the action  rho = scale*(action)
-    self.rho =action*(HIGH-LOW)/2+(HIGH+LOW)/2
+    self.rho =np.exp(action*(HIGH-LOW)/2+(HIGH+LOW)/2)
     penalty=0
     # make sure rho stays within limits, if this happens, add a penalty
     for ci in range(self.K):
-     if self.rho[ci]<LOW:
-       self.rho[ci]=LOW
+     if self.rho[ci]<np.exp(LOW):
+       self.rho[ci]=np.exp(LOW)
        penalty +=-0.1
-     if self.rho[ci]>HIGH:
-       self.rho[ci]=HIGH
+     if self.rho[ci]>np.exp(HIGH):
+       self.rho[ci]=np.exp(HIGH)
        penalty +=-0.1
 
     # generate data (by adding noise to noise-free data)
     if not keepnoise:
-      torch.manual_seed(time.time())
+      #torch.manual_seed(time.time())
       n=torch.randn(self.N,dtype=torch.float32,requires_grad=False,device=mydevice)
       self.y=self.y0+self.SNR*torch.norm(self.y0)/torch.norm(n)*n
     
@@ -199,7 +196,7 @@ class ENetEnv(gym.Env):
   # find initial solution with initial rho
   def initsol(self):
     # generate data (by adding noise to noise-free data)
-    torch.manual_seed(time.time())
+    #torch.manual_seed(time.time())
     # one observation
     n=torch.randn(self.N,dtype=torch.float32,requires_grad=False,device=mydevice)
     self.y=self.y0+self.SNR*torch.norm(self.y0)/torch.norm(n)*n
@@ -241,7 +238,7 @@ class ENetEnv(gym.Env):
     hint_[0]=best['lambda1']
     hint_[1]=best['lambda2']
     # map back to action space (inverse of what is done in step())
-    return (hint_-(HIGH+LOW)/2)/((HIGH-LOW)/2)
+    return (np.log(hint_)-(HIGH+LOW)/2)/((HIGH-LOW)/2)
  
   def close (self):
     pass
