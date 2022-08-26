@@ -17,10 +17,13 @@ if __name__ == '__main__':
     agent = DemixingAgent(gamma=0.99, batch_size=64, n_actions=K-1, tau=0.005, max_mem_size=4096,
                   input_dims=[1,Ninf,Ninf], M=M, lr_a=1e-3, lr_c=1e-3, alpha=0.03, use_hint=provide_hint)
     scores=[]
-    n_games = 30
+    n_games = 100
+
+    total_steps=0
+    warmup_steps=400
     
     # load from disk DQN, replaymem
-    #agent.load_models()
+    agent.load_models()
     #with open('scores.pkl','rb') as f:
     #    scores=pickle.load(f)
 
@@ -32,7 +35,11 @@ if __name__ == '__main__':
         observation = env.reset()
         loop=0
         while (not done) and loop<7:
-            action = agent.choose_action(observation)
+            if total_steps<warmup_steps:
+              action = env.action_space.sample()
+            else:
+              action = agent.choose_action(observation)
+
             if provide_hint:
               observation_, reward, done, hint, info = env.step(action)
               agent.store_transition(observation, action, reward, 
@@ -46,6 +53,7 @@ if __name__ == '__main__':
             agent.learn()
             observation = observation_
             loop+=1
+            total_steps+=1
         score=score/loop
         scores.append(score)
 
