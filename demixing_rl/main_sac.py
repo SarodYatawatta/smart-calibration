@@ -23,7 +23,7 @@ if __name__ == '__main__':
     warmup_steps=400
     
     # load from disk DQN, replaymem
-    agent.load_models()
+    #agent.load_models()
     #with open('scores.pkl','rb') as f:
     #    scores=pickle.load(f)
 
@@ -37,6 +37,7 @@ if __name__ == '__main__':
         while (not done) and loop<7:
             if total_steps<warmup_steps:
               action = env.action_space.sample()
+              action = action.squeeze(-1)
             else:
               action = agent.choose_action(observation)
 
