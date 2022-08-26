@@ -43,8 +43,8 @@ class DemixingEnv(gym.Env):
     self.K=K
     self.Ninf=Ninf
     self.Npix=Npix
-    # actions: 0,1,..,K-2 : action (K-1)x1 each in [0,1]
-    self.action_space = spaces.Box(low=np.zeros((self.K-1,1))*LOW,high=np.ones((self.K-1,1))*HIGH,dtype=np.float32)
+    # actions: 0,1,..,K-2 : action (K-1)x1 each in [-1,1]
+    self.action_space = spaces.Box(low=np.ones((self.K-1,1))*(-1),high=np.ones((self.K-1,1))*(1),dtype=np.float32)
     # observation (state space): residual and influence maps
     # metadata: separation,azimuth,elevation (K values),frequency,n_stations
     self.observation_space = spaces.Dict({
