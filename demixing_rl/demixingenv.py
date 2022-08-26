@@ -105,7 +105,7 @@ class DemixingEnv(gym.Env):
     self.print_clusters_()
     self.output_rho_()
     # run calibration, use --oversubscribe if not enough slots are available
-    sb.run('mpirun -np 3 --oversubscribe '+generate_data.sagecal_mpi+' -f \'L_SB*.MS\'  -A 10 -P 2 -s sky.txt -c '+self.cluster+' -I DATA -O MODEL_DATA -p zsol -G '+self.out_admm_rho+' -n 4 -t '+str(self.Tdelta),shell=True)
+    sb.run('mpirun -np 3 --oversubscribe '+generate_data.sagecal_mpi+' -f \'L_SB*.MS\'  -A 10 -P 2 -s sky.txt -c '+self.cluster+' -I DATA -O MODEL_DATA -p zsol -G '+self.out_admm_rho+' -n 4 -t '+str(self.Tdelta)+' > /dev/null',shell=True)
 
     # calculate influence
     sb.run(self.cmd_calc_influence,shell=True)
@@ -162,7 +162,7 @@ class DemixingEnv(gym.Env):
     self.print_clusters_()
     self.output_rho_()
     # run calibration, use --oversubscribe if not enough slots are available
-    sb.run('mpirun -np 3 --oversubscribe '+generate_data.sagecal_mpi+' -f \'L_SB*.MS\'  -A 10 -P 2 -s sky.txt -c '+self.cluster+' -I DATA -O MODEL_DATA -p zsol -G '+self.out_admm_rho+' -n 4 -t '+str(self.Tdelta),shell=True)
+    sb.run('mpirun -np 3 --oversubscribe '+generate_data.sagecal_mpi+' -f \'L_SB*.MS\'  -A 10 -P 2 -s sky.txt -c '+self.cluster+' -I DATA -O MODEL_DATA -p zsol -G '+self.out_admm_rho+' -n 4 -t '+str(self.Tdelta)+' > /dev/null',shell=True)
 
     # calculate influence (image at ./influenceI.fits)
     sb.run(self.cmd_calc_influence,shell=True)
@@ -281,7 +281,7 @@ class DemixingEnv(gym.Env):
            Kselected=len(clus_id)
            self.print_clusters_(clus_id)
            self.output_rho_(clus_id)
-           sb.run('mpirun -np 3 --oversubscribe '+generate_data.sagecal_mpi+' -f \'L_SB*.MS\'  -A 10 -P 2 -s sky.txt -c '+self.cluster+' -I DATA -O MODEL_DATA -p zsol -G '+self.out_admm_rho+' -n 4 -t '+str(self.Tdelta),shell=True)
+           sb.run('mpirun -np 3 --oversubscribe '+generate_data.sagecal_mpi+' -f \'L_SB*.MS\'  -A 10 -P 2 -s sky.txt -c '+self.cluster+' -I DATA -O MODEL_DATA -p zsol -G '+self.out_admm_rho+' -n 4 -t '+str(self.Tdelta)+' > /dev/null',shell=True)
            # calculate noise
            std_residual=self.get_noise_(col='MODEL_DATA')
            AIC[index]=(self.N*std_residual/self.std_data)**2+Kselected*self.N
@@ -290,7 +290,12 @@ class DemixingEnv(gym.Env):
     probs=np.exp(-AIC/self.tau)/np.sum(np.exp(-AIC/self.tau))
     print(AIC)
     print(probs)
-    return probs
+    # map 2**(K-1) to K-1 vector
+    hint=np.zeros(self.K-1)
+    for ci in range(2**(self.K-1)):
+        hint+=probs[ci]*self.scalar_to_kvec(ci,self.K-1)
+    print(hint)
+    return hint
 
 
   def render(self, mode='human'):

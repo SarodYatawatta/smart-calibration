@@ -41,7 +41,7 @@ if __name__ == '__main__':
             else:
               observation_, reward, done, info = env.step(action)
               agent.store_transition(observation, action, reward, 
-                                    observation_, done, np.zeros(2**(K-1)))
+                                    observation_, done, np.zeros(K-1))
 
             score += reward
             agent.learn()

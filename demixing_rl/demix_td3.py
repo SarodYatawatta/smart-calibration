@@ -433,12 +433,8 @@ class DemixingAgent():
 
 
     def store_transition(self, state, action, reward, state_, terminal, hint):
-        # map hint in 2**(K-1) to K vector
-        hintK=np.zeros(self.n_actions)
-        for ci in range(2**(self.n_actions)):
-              hintK+=hint[ci]*DemixingEnv.scalar_to_kvec(ci,self.n_actions)
-
-        self.replaymem.store_transition(state,action,reward,state_,terminal, hintK)
+        # hint is K-1 vector
+        self.replaymem.store_transition(state,action,reward,state_,terminal, hint)
 
     def choose_action(self, observation):
         if self.time_step<self.warmup:

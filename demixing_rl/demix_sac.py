@@ -316,8 +316,7 @@ class ReplayBuffer(object):
         self.state_memory_sky= np.zeros((self.mem_size, self.M), dtype=np.float32)
         self.new_state_memory_img = np.zeros((self.mem_size, *input_shape), dtype=np.float32)
         self.new_state_memory_sky = np.zeros((self.mem_size, self.M), dtype=np.float32)
-        # action is a scalar value in [0,2^n_actions]
-        self.action_memory = np.zeros((self.mem_size,1), dtype=int)
+        self.action_memory = np.zeros((self.mem_size,n_actions), dtype=np.float32)
         self.reward_memory = np.zeros(self.mem_size, dtype=np.float32)
         self.terminal_memory = np.zeros(self.mem_size, dtype=bool)
         self.hint_memory = np.zeros((self.mem_size,n_actions), dtype=np.float32)
@@ -464,8 +463,8 @@ class ActorNetwork(nn.Module):
 
         linear_input_size=convw*convh*32+16 # +16 from sky network
         self.fc21=nn.Linear(linear_input_size,128)
-        self.fc22=nn.Linear(128,n_actions)
-        self.head=nn.Softmax(dim=1)
+        self.fc22mu=nn.Linear(128,n_actions)
+        self.fc22logsigma=nn.Linear(128,n_actions)
 
         init_layer(self.conv1)
         init_layer(self.conv2)
@@ -473,7 +472,8 @@ class ActorNetwork(nn.Module):
         init_layer(self.fc11)
         init_layer(self.fc12)
         init_layer(self.fc21)
-        init_layer(self.fc22,0.003) # last layer
+        init_layer(self.fc22mu,0.003) # last layer
+        init_layer(self.fc22logsigma,0.003) # last layer
 
         self.optimizer = optim.Adam(self.parameters(), lr=lr)
         self.device = mydevice
@@ -490,17 +490,32 @@ class ActorNetwork(nn.Module):
         z=F.relu(self.fc11(z)) # metadata
         z=F.relu(self.fc12(z))
         x=F.elu(self.fc21(T.cat((x,z),1)))
-        mu=self.fc22(x)
-        return self.head(mu)
+        mu=self.fc22mu(x)
+        logsigma=self.fc22logsigma(x)
+        logsigma = T.clamp(logsigma, min=-20, max=2)
+        return mu,logsigma
 
-    def get_action_info(self, x, z):
-        mu = self.forward(x, z)
-        mu_eps= mu==0.0
-        mu_eps = mu_eps.float()*1e-8
+    def sample_normal(self, x, z, reparameterize=True):
+        mu, logsigma = self.forward(x,z)
+        sigma=logsigma.exp()
+        probabilities = Normal(mu, sigma)
 
-        log_mu = T.log(mu+mu_eps)
+        if reparameterize:
+            actions = probabilities.rsample()
+        else:
+            actions = probabilities.sample()
+        # add batch dimension if missing
+        if actions.dim()==1:
+         actions.unsqueeze_(0)
 
-        return mu, log_mu
+        actions_t=T.tanh(actions)
+        # scale actions
+        action = actions_t*T.tensor(self.max_action).to(self.device)
+        log_probs = probabilities.log_prob(actions)
+        log_probs -= T.log(self.max_action*(1-actions_t.pow(2))+self.reparam_noise)
+        log_probs = log_probs.sum(1, keepdim=True)
+
+        return action, log_probs
 
     def save_checkpoint(self):
         T.save(self.state_dict(), self.checkpoint_file)
@@ -511,13 +526,9 @@ class ActorNetwork(nn.Module):
     def load_checkpoint_for_eval(self):
         self.load_state_dict(T.load(self.checkpoint_file,map_location=T.device('cpu')))
 
-# SAC in discrete action space, based on
-# https://github.com/Felhof/DiscreteSAC
-# and
-# https://github.com/ku2482/sac-discrete.pytorch
 class DemixingAgent():
     def __init__(self, gamma, lr_a, lr_c, input_dims, batch_size, n_actions,
-            max_mem_size=100, tau=0.001, M=30, warmup=1000, update_interval=4, prioritized=True, use_hint=False):
+            max_mem_size=100, tau=0.001, M=30, reward_scale=2, alpha=0.1, name_prefix='', use_hint=False):
         # Note: M is metadata size
         self.gamma = gamma
         self.tau=tau
@@ -525,41 +536,38 @@ class DemixingAgent():
         self.n_actions=n_actions
         # actions are always in [-1,1]
         self.max_action=1
-        self.warmup=warmup
-        self.update_interval=update_interval
-        self.time_step=0
-        self.learn_step_cntr=0
-
-        self.prioritized=prioritized
-        if not self.prioritized:
-           self.replaymem=ReplayBuffer(max_mem_size, input_dims, n_actions, M)
-        else:
-           self.replaymem=PER(max_mem_size, input_dims, n_actions, M)
-           self.idxs=None
+        self.replaymem=ReplayBuffer(max_mem_size, input_dims, n_actions, M)
     
         # online nets
         self.actor=ActorNetwork(lr_a, input_dims=input_dims, n_actions=n_actions, M=M,
-                max_action=self.max_action, name='a_eval')
-        self.critic_1=CriticNetwork(lr_c, input_dims=input_dims, n_actions=n_actions, M=M, name='q_eval_1')
-        self.critic_2=CriticNetwork(lr_c, input_dims=input_dims, n_actions=n_actions, M=M, name='q_eval_2')
+                max_action=self.max_action, name=name_prefix+'a_eval')
+        self.critic_1=CriticNetwork(lr_c, input_dims=input_dims, n_actions=n_actions, M=M, name=name_prefix+'q_eval_1')
+        self.critic_2=CriticNetwork(lr_c, input_dims=input_dims, n_actions=n_actions, M=M, name=name_prefix+'q_eval_2')
 
-        self.target_critic_1=CriticNetwork(lr_c, input_dims=input_dims, n_actions=n_actions, M=M, name='q_target_1')
-        self.target_critic_2=CriticNetwork(lr_c, input_dims=input_dims, n_actions=n_actions, M=M, name='q_target_2')
+        self.target_critic_1=CriticNetwork(lr_c, input_dims=input_dims, n_actions=n_actions, M=M, name=name_prefix+'q_target_1')
+        self.target_critic_2=CriticNetwork(lr_c, input_dims=input_dims, n_actions=n_actions, M=M, name=name_prefix+'q_target_2')
+        # temperature
+        self.alpha= alpha
+        # reward scale
+        self.scale= reward_scale
 
         # reward scale ~ 1/alpha where alpha*entropy(pi(.|.)) is used for regularization of future reward
-        self.target_entropy=0.98* -np.log(1/n_actions)
-        self.log_alpha=T.tensor(np.log(1.),requires_grad=True)
-        self.alpha= self.log_alpha.exp()
-        self.alpha_optimizer=T.optim.Adam([self.log_alpha],lr=1e-4)
+        self.learn_alpha=False
+        if self.learn_alpha:
+          self.target_entropy=-np.sum(n_actions)
+          self.log_alpha=T.tensor(np.log(self.alpha),requires_grad=True)
+          self.alpha_optimizer=T.optim.Adam([self.log_alpha],lr=lr_a)
 
         # initialize targets (hard copy)
         self.update_network_parameters(self.target_critic_1, self.critic_1, tau=1.)
         self.update_network_parameters(self.target_critic_2, self.critic_2, tau=1.)
 
         self.use_hint=use_hint
-        self.admm_rho=0.1
-        self.Nadmm=5
-
+        if self.use_hint:
+           self.hint_threshold=0.6
+           self.rho=T.tensor(0.0,requires_grad=False,device=mydevice)
+           self.admm_rho=0.01
+           self.zero_tensor=T.tensor(0.).to(mydevice)
 
     def update_network_parameters(self, target_model, origin_model, tau=None):
         if tau is None:
@@ -569,48 +577,26 @@ class DemixingAgent():
             target_param.data.copy_(tau* local_param.data + (1-tau) * target_param.data)
 
     def store_transition(self, state, action, reward, state_, terminal, hint):
-        if not self.prioritized:
-           self.replaymem.store_transition(state,action,reward,state_,terminal,hint)
-        else:
-           self.replaymem.store_transition(state,action,reward,state_,terminal,hint)
+        self.replaymem.store_transition(state,action,reward,state_,terminal,hint)
 
     def choose_action(self, observation, evaluation_episode=False):
-        if self.time_step<self.warmup:
-            self.time_step+=1
-            action=np.random.choice(range(self.n_actions))
-            return action
-
-        self.actor.eval() # to disable batchnorm
         state = T.tensor(observation['infmap'].astype(np.float32),dtype=T.float32).to(mydevice)
         state = state[None,]
         state_sky = T.tensor(observation['metadata'].astype(np.float32),dtype=T.float32).to(mydevice)
         state_sky = state_sky[None,]
-        action_probabilities = self.actor.forward(state,state_sky)
+        self.actor.eval() # to disable batchnorm
+        action_probabilities,_ = self.actor.sample_normal(state,state_sky,reparameterize=False)
         self.actor.train() # to enable batchnorm
 
-        action_probs=action_probabilities.squeeze(0).cpu().detach().numpy()
-        if evaluation_episode:
-           action=np.argmax(action_probs)
-        else:
-           action=np.random.choice(range(self.n_actions),p=action_probs)
-
-        self.time_step+=1
-        return action
+        return action_probabilities.cpu().detach().numpy()[0]
 
     def learn(self):
         if self.replaymem.mem_cntr < self.batch_size:
             return
         
-        if not self.prioritized:
-            state, action, reward, new_state, done, hint = \
+        state, action, reward, new_state, done, hint = \
                                 self.replaymem.sample_buffer(self.batch_size)
-        else:
-            state, action, reward, new_state, done, hint, idxs, is_weights = \
-                                self.replaymem.sample_buffer(self.batch_size)
-            self.idxs=idxs
  
-        batch_index = np.arange(self.batch_size, dtype=np.int32)
-
         state_batch = T.tensor(state['infmap']).to(mydevice)
         state_batch_sky = T.tensor(state['metadata']).to(mydevice)
         new_state_batch = T.tensor(new_state['infmap']).to(mydevice)
@@ -620,104 +606,69 @@ class DemixingAgent():
         terminal_batch = T.tensor(done).to(mydevice)
         hint_batch= T.tensor(hint).to(mydevice)
 
-        if self.prioritized:
-            is_weight=T.tensor(is_weights).to(mydevice)
-        else:
-            is_weight=1
+        with T.no_grad():
+            new_actions, new_log_probs = self.actor.sample_normal(new_state_batch, new_state_batch_sky, reparameterize=False)
+            q1_new_policy = self.target_critic_1.forward(new_state_batch, new_state_batch_sky, new_actions)
+            q2_new_policy = self.target_critic_2.forward(new_state_batch, new_state_batch_sky, new_actions)
+            min_next_target=T.min(q1_new_policy,q2_new_policy)-self.alpha*new_log_probs
+            min_next_target[terminal_batch]=0.0
+            new_q_value=reward_batch+self.gamma*min_next_target
 
-        self.critic_1.optimizer.zero_grad()
-        self.critic_2.optimizer.zero_grad()
-        self.alpha_optimizer.zero_grad()
-
-        critic_1_loss, critic_2_loss =\
-           self.critic_loss(state_batch,state_batch_sky,new_state_batch,new_state_batch_sky,action_batch,reward_batch,terminal_batch, is_weight)
-
-        critic_1_loss.backward()
-        critic_2_loss.backward()
-        self.critic_1.optimizer.step()
-        self.critic_2.optimizer.step()
+        q1_new_policy = self.critic_1.forward(state_batch, state_batch_sky, action_batch)
+        q2_new_policy = self.critic_2.forward(state_batch, state_batch_sky, action_batch)
+        critic_1_loss = F.mse_loss(q1_new_policy, new_q_value)
+        critic_2_loss = F.mse_loss(q2_new_policy, new_q_value)
+        critic_loss = critic_1_loss + critic_2_loss
 
         if not self.use_hint:
-            actor_loss, log_action_probabilities=self.actor_loss_without_hint(state_batch,state_batch_sky, is_weight)
-            self.actor.optimizer.zero_grad()
-            actor_loss.backward()
-            self.actor.optimizer.step()
+          actions, log_probs = self.actor.sample_normal(state_batch, state_batch_sky, reparameterize=True)
+          q1_new_policy = self.critic_1.forward(state_batch, state_batch_sky, actions)
+          q2_new_policy = self.critic_2.forward(state_batch, state_batch_sky, actions)
+          critic_value = T.min(q1_new_policy, q2_new_policy)
+
+          actor_loss = (self.alpha*log_probs - critic_value).mean()
+
+          self.actor.optimizer.zero_grad()
+          actor_loss.backward()
+          self.actor.optimizer.step()
+
+          self.critic_1.optimizer.zero_grad()
+          self.critic_2.optimizer.zero_grad()
+          critic_loss.backward()
+          self.critic_1.optimizer.step()
+          self.critic_2.optimizer.step()
         else:
-           lagrange_y=T.zeros(hint_batch.numel(),requires_grad=False).to(mydevice)
-           for admm in range(self.Nadmm):
-              actor_loss, actions, log_action_probabilities=self.actor_loss(state_batch,state_batch_sky, lagrange_y, hint_batch, is_weight)
-              self.actor.optimizer.zero_grad()
-              actor_loss.backward(retain_graph=True)
-              self.actor.optimizer.step()
-              with T.no_grad():
-                  lagrange_y=lagrange_y+self.admm_rho*(actions-hint_batch).view(-1)
+          actions, log_probs = self.actor.sample_normal(state_batch, state_batch_sky, reparameterize=True)
+          q1_new_policy = self.critic_1.forward(state_batch, state_batch_sky, actions)
+          q2_new_policy = self.critic_2.forward(state_batch, state_batch_sky, actions)
+          critic_value = T.min(q1_new_policy, q2_new_policy)
 
-        alpha_loss=self.temperature_loss(log_action_probabilities, is_weight)
-        alpha_loss.backward()
-        self.alpha_optimizer.step()
-        self.alpha=self.log_alpha.exp()
-        
-        self.learn_step_cntr+=1
-        if self.learn_step_cntr % self.update_interval == 0:
-           self.update_network_parameters(self.target_critic_1, self.critic_1)
-           self.update_network_parameters(self.target_critic_2, self.critic_2)
+          gfun=(T.max(self.zero_tensor,((F.mse_loss(actions, hint_batch)-self.hint_threshold)).mean()).pow(2))
+          actor_loss = (self.alpha*log_probs - critic_value).mean()+0.5*self.admm_rho*gfun*gfun+self.rho*gfun
 
-    def critic_loss(self,state_batch,state_batch_sky,new_state_batch,new_state_batch_sky,action_batch,reward_batch,terminal_batch, is_weight):
-        with T.no_grad():
-            action_probabilities,log_action_probabilities=self.actor.get_action_info(new_state_batch,new_state_batch_sky)
-            next_q_1_target=self.target_critic_1.forward(new_state_batch,new_state_batch_sky)
-            next_q_2_target=self.target_critic_2.forward(new_state_batch,new_state_batch_sky)
-            soft_state_values=(action_probabilities 
-                    * (T.min(next_q_1_target,next_q_2_target) - self.alpha *log_action_probabilities)).sum(dim=1)
+          self.actor.optimizer.zero_grad()
+          actor_loss.backward()
+          self.actor.optimizer.step()
 
-            next_q_values=reward_batch + ~terminal_batch * self.gamma* soft_state_values
-        # select q values indexes by the action (scalar value)
-        soft_q_1=self.critic_1(state_batch,state_batch_sky).gather(1,action_batch).squeeze(-1)
-        soft_q_2=self.critic_2(state_batch,state_batch_sky).gather(1,action_batch).squeeze(-1)
-        critic1_square_err=T.nn.MSELoss(reduction='none')(soft_q_1,next_q_values)
-        critic2_square_err=T.nn.MSELoss(reduction='none')(soft_q_2,next_q_values)
+          self.critic_1.optimizer.zero_grad()
+          self.critic_2.optimizer.zero_grad()
+          critic_loss.backward()
+          self.critic_1.optimizer.step()
+          self.critic_2.optimizer.step()
+          # ||action-hint||^2 < threshold
+          with T.no_grad():
+            gfun=(T.max(self.zero_tensor,((F.mse_loss(actions, hint_batch)-self.hint_threshold).detach()).mean()).pow(2))
+            self.rho+=self.admm_rho*gfun
 
-        if self.prioritized:
-            errors1=critic1_square_err.detach().cpu().numpy()
-            errors2=critic2_square_err.detach().cpu().numpy()
-            self.replaymem.batch_update(self.idxs,0.5*(errors1+errors2))
+        if self.learn_alpha:
+             alpha_loss = -(self.log_alpha.exp() * (log_probs + self.target_entropy).detach()).mean()
+             self.alpha_optimizer.zero_grad()
+             alpha_loss.backward()
+             self.alpha_optimizer.step()
+             self.alpha=self.log_alpha.exp().data.item()
 
-        if self.prioritized:
-          critic_1_loss=(is_weight*critic1_square_err).mean()
-          critic_2_loss=(is_weight*critic2_square_err).mean()
-        else:
-          critic_1_loss=critic1_square_err.mean()
-          critic_2_loss=critic2_square_err.mean()
-
-        return critic_1_loss, critic_2_loss
-
-    def actor_loss_without_hint(self, state_batch, state_batch_sky, is_weight):
-        action_probabilities, log_action_probabilities=self.actor.get_action_info(state_batch, state_batch_sky)
-        q_1=self.critic_1(state_batch,state_batch_sky)
-        q_2=self.critic_2(state_batch,state_batch_sky)
-
-        inner_term=self.alpha*log_action_probabilities-T.min(q_1,q_2)
-        policy_loss=(is_weight*((action_probabilities*inner_term).sum(dim=1))).mean()
-        print(policy_loss.data.item())
-        return policy_loss, log_action_probabilities
-
-
-    def actor_loss(self, state_batch, state_batch_sky, lagrange_y, hints, is_weight):
-        action_probabilities, log_action_probabilities=self.actor.get_action_info(state_batch, state_batch_sky)
-        q_1=self.critic_1(state_batch,state_batch_sky)
-        q_2=self.critic_2(state_batch,state_batch_sky)
-
-        inner_term=self.alpha*log_action_probabilities-T.min(q_1,q_2)
-        policy_loss=(is_weight*((action_probabilities*inner_term).sum(dim=1))).mean()
-        diff1=(action_probabilities-hints).view(-1)
-        loss1=((T.dot(lagrange_y,diff1)+self.admm_rho/2*F.mse_loss(action_probabilities,hints))*is_weight).mean()/action_probabilities.numel()
-        print(loss1.data.item(),policy_loss.data.item())
-        policy_loss=policy_loss+loss1
-        return policy_loss, action_probabilities, log_action_probabilities
-
-    def temperature_loss(self,log_action_probabilities, is_weight):
-        alpha_loss=-(self.log_alpha*(is_weight*(log_action_probabilities+self.target_entropy).mean(dim=1)).detach()).mean()
-        return alpha_loss
+        self.update_network_parameters(self.target_critic_1, self.critic_1)
+        self.update_network_parameters(self.target_critic_2, self.critic_2)
 
     def save_models(self):
         self.actor.save_checkpoint()
@@ -748,5 +699,5 @@ class DemixingAgent():
         print(self.actor)
         print(self.critic_1)
 
-#a=DemixingAgent(gamma=0.99, batch_size=32, n_actions=2**2, M=4,
+#a=DemixingAgent(gamma=0.99, batch_size=32, n_actions=2, M=4,
 #             max_mem_size=1000, input_dims=[1,128,128], lr_a=0.001, lr_c=0.001)
