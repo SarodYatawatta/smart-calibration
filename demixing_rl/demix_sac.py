@@ -386,7 +386,7 @@ class CriticNetwork(nn.Module):
         self.bn3=nn.BatchNorm2d(32)
 
         # network to pass M values forward
-        self.fc1=nn.Linear(M,128)
+        self.fc1=nn.Linear(M+n_actions,128)
         self.fc2=nn.Linear(128,16)
 
         # function to calculate output image size per single conv operation
@@ -397,7 +397,7 @@ class CriticNetwork(nn.Module):
         convh=conv2d_size_out(conv2d_size_out(conv2d_size_out(h)))
 
         linear_input_size=convw*convh*32+16 # +16 from metadata network
-        self.head=nn.Linear(linear_input_size,n_actions)
+        self.head=nn.Linear(linear_input_size,1)
 
         init_layer(self.conv1)
         init_layer(self.conv2)
@@ -413,12 +413,12 @@ class CriticNetwork(nn.Module):
 
         self.to(self.device)
 
-    def forward(self, x, z): # x is image, z is the sky tensor
+    def forward(self, x, z, action): # x is image, z is the sky tensor
         x=F.relu(self.bn1(self.conv1(x))) # image
         x=F.relu(self.bn2(self.conv2(x)))
         x=F.relu(self.bn3(self.conv3(x)))
         x=T.flatten(x,start_dim=1)
-        z=F.relu(self.fc1(z)) # action, sky
+        z=F.relu(self.fc1(T.cat((z,action),1))) # action, sky
         z=F.relu(self.fc2(z))
 
         qval=self.head(T.cat((x,z),1))
@@ -564,7 +564,7 @@ class DemixingAgent():
 
         self.use_hint=use_hint
         if self.use_hint:
-           self.hint_threshold=0.6
+           self.hint_threshold=0.4
            self.rho=T.tensor(0.0,requires_grad=False,device=mydevice)
            self.admm_rho=0.01
            self.zero_tensor=T.tensor(0.).to(mydevice)
