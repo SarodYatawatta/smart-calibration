@@ -288,15 +288,13 @@ class DemixingEnv(gym.Env):
 
     # take softmin
     probs=np.exp(-AIC/self.tau)/np.sum(np.exp(-AIC/self.tau))
-    print(AIC)
-    print(probs)
     # map 2**(K-1) to K-1 vector
     hint=np.zeros(self.K-1)
     for ci in range(2**(self.K-1)):
         hint+=probs[ci]*self.scalar_to_kvec(ci,self.K-1)
-    print(hint)
+    # transform [0,1] back to [-1,1] space
+    hint=(hint-(HIGH+LOW)/2)*(2/(HIGH-LOW))
     return hint
-
 
   def render(self, mode='human'):
     print('%%%%%%%%%%%%%%%%%%%%%%')
