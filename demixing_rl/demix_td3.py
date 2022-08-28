@@ -225,7 +225,7 @@ class ReplayBuffer(object):
           self.action_memory=temp.action_memory
           self.reward_memory=temp.reward_memory
           self.terminal_memory=temp.terminal_memory
-          self.hint_hint=temp.hint_memory
+          self.hint_memory=temp.hint_memory
 
 
 # input: state,action output: q-value

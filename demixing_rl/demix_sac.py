@@ -308,7 +308,7 @@ class PER(object):  # stored as ( s, a, r, s_new, done ) in SumTree
 ########################################
 
 class ReplayBuffer(object):
-    def __init__(self, max_size, input_shape, n_actions, M):
+    def __init__(self, max_size, input_shape, n_actions, M, filename='replaymem_sac.model'):
         self.mem_size = max_size
         self.M=M # metadata
         self.mem_cntr = 0
@@ -320,7 +320,7 @@ class ReplayBuffer(object):
         self.reward_memory = np.zeros(self.mem_size, dtype=np.float32)
         self.terminal_memory = np.zeros(self.mem_size, dtype=bool)
         self.hint_memory = np.zeros((self.mem_size,n_actions), dtype=np.float32)
-        self.filename='replaymem_sac.model' # for saving object
+        self.filename=filename # for saving object
 
     def store_transition(self, state, action, reward, state_, done, hint):
         index = self.mem_cntr % self.mem_size
@@ -366,7 +366,7 @@ class ReplayBuffer(object):
           self.action_memory=temp.action_memory
           self.reward_memory=temp.reward_memory
           self.terminal_memory=temp.terminal_memory
-          self.hint_hint=temp.hint_memory
+          self.hint_memory=temp.hint_memory
 
 # input: state, output: action space \in R^|action|
 class CriticNetwork(nn.Module):
