@@ -547,27 +547,28 @@ class DemixingAgent():
         self.target_critic_1=CriticNetwork(lr_c, input_dims=input_dims, n_actions=n_actions, M=M, name=name_prefix+'q_target_1')
         self.target_critic_2=CriticNetwork(lr_c, input_dims=input_dims, n_actions=n_actions, M=M, name=name_prefix+'q_target_2')
         # temperature
-        self.alpha= alpha
+        self.alpha=T.tensor(alpha,requires_grad=False,device=mydevice)
         # reward scale
         self.scale= reward_scale
 
-        # reward scale ~ 1/alpha where alpha*entropy(pi(.|.)) is used for regularization of future reward
+        self.zero_tensor=T.tensor(0.).to(mydevice)
         self.learn_alpha=False
         if self.learn_alpha:
-          self.target_entropy=-np.sum(n_actions)
-          self.log_alpha=T.tensor(np.log(self.alpha),requires_grad=True)
-          self.alpha_optimizer=T.optim.Adam([self.log_alpha],lr=lr_a)
+          # number of bits (float) to represent the actions
+          self.target_entropy=32*np.sum(n_actions)
+          self.alpha_lr=1e-4
+
+        self.use_hint=use_hint
+        if self.use_hint:
+           self.hint_threshold=0.1
+           self.rho=T.tensor(0.0,requires_grad=False,device=mydevice)
+           self.rho_lr=1e-4
 
         # initialize targets (hard copy)
         self.update_network_parameters(self.target_critic_1, self.critic_1, tau=1.)
         self.update_network_parameters(self.target_critic_2, self.critic_2, tau=1.)
 
-        self.use_hint=use_hint
-        if self.use_hint:
-           self.hint_threshold=0.4
-           self.rho=T.tensor(0.0,requires_grad=False,device=mydevice)
-           self.admm_rho=0.01
-           self.zero_tensor=T.tensor(0.).to(mydevice)
+        self.learn_counter=0
 
     def update_network_parameters(self, target_model, origin_model, tau=None):
         if tau is None:
@@ -602,8 +603,8 @@ class DemixingAgent():
         new_state_batch = T.tensor(new_state['infmap']).to(mydevice)
         new_state_batch_sky = T.tensor(new_state['metadata']).to(mydevice)
         action_batch = T.tensor(action).to(mydevice)
-        reward_batch = T.tensor(reward).to(mydevice)
-        terminal_batch = T.tensor(done).to(mydevice)
+        reward_batch = T.tensor(reward).to(mydevice).unsqueeze(1)
+        terminal_batch = T.tensor(done).to(mydevice).unsqueeze(1)
         hint_batch= T.tensor(hint).to(mydevice)
 
         with T.no_grad():
@@ -616,11 +617,11 @@ class DemixingAgent():
 
         q1_new_policy = self.critic_1.forward(state_batch, state_batch_sky, action_batch)
         q2_new_policy = self.critic_2.forward(state_batch, state_batch_sky, action_batch)
-        critic_1_loss = F.mse_loss(q1_new_policy, new_q_value)
-        critic_2_loss = F.mse_loss(q2_new_policy, new_q_value)
-        critic_loss = critic_1_loss + critic_2_loss
-
         if not self.use_hint:
+          critic_1_loss = F.mse_loss(q1_new_policy, new_q_value)
+          critic_2_loss = F.mse_loss(q2_new_policy, new_q_value)
+          critic_loss = critic_1_loss + critic_2_loss
+
           actions, log_probs = self.actor.sample_normal(state_batch, state_batch_sky, reparameterize=True)
           q1_new_policy = self.critic_1.forward(state_batch, state_batch_sky, actions)
           q2_new_policy = self.critic_2.forward(state_batch, state_batch_sky, actions)
@@ -639,33 +640,38 @@ class DemixingAgent():
           self.critic_2.optimizer.step()
         else:
           actions, log_probs = self.actor.sample_normal(state_batch, state_batch_sky, reparameterize=True)
+          critic_1_loss = F.mse_loss(q1_new_policy, new_q_value - self.rho*F.mse_loss(actions, hint_batch))
+          critic_2_loss = F.mse_loss(q2_new_policy, new_q_value - self.rho*F.mse_loss(actions, hint_batch))
+          critic_loss = critic_1_loss + critic_2_loss
+
+          self.critic_1.optimizer.zero_grad()
+          self.critic_2.optimizer.zero_grad()
+          critic_loss.backward(retain_graph=True)
+          self.critic_1.optimizer.step()
+          self.critic_2.optimizer.step()
+
           q1_new_policy = self.critic_1.forward(state_batch, state_batch_sky, actions)
           q2_new_policy = self.critic_2.forward(state_batch, state_batch_sky, actions)
           critic_value = T.min(q1_new_policy, q2_new_policy)
 
-          gfun=(T.max(self.zero_tensor,((F.mse_loss(actions, hint_batch)-self.hint_threshold)).mean()).pow(2))
-          actor_loss = (self.alpha*log_probs - critic_value).mean()+0.5*self.admm_rho*gfun*gfun+self.rho*gfun
-
+          actor_loss = (self.alpha*log_probs - critic_value).mean()
           self.actor.optimizer.zero_grad()
           actor_loss.backward()
           self.actor.optimizer.step()
+          print(f'{actor_loss.data.item()}')
 
-          self.critic_1.optimizer.zero_grad()
-          self.critic_2.optimizer.zero_grad()
-          critic_loss.backward()
-          self.critic_1.optimizer.step()
-          self.critic_2.optimizer.step()
-          # ||action-hint||^2 < threshold
-          with T.no_grad():
-            gfun=(T.max(self.zero_tensor,((F.mse_loss(actions, hint_batch)-self.hint_threshold).detach()).mean()).pow(2))
-            self.rho+=self.admm_rho*gfun
+        if self.learn_counter%10==0:
+            with T.no_grad():
+               if self.learn_alpha:
+                  _, log_probs = self.actor.sample_normal(state_batch, state_batch_sky, reparameterize=False)
+                  self.alpha=T.max(self.zero_tensor,self.alpha+self.alpha_lr*((self.target_entropy-(-log_probs)).mean()))
 
-        if self.learn_alpha:
-             alpha_loss = -(self.log_alpha.exp() * (log_probs + self.target_entropy).detach()).mean()
-             self.alpha_optimizer.zero_grad()
-             alpha_loss.backward()
-             self.alpha_optimizer.step()
-             self.alpha=self.log_alpha.exp().data.item()
+               if self.use_hint:
+                   self.rho=T.max(self.zero_tensor,self.rho+self.rho_lr*((F.mse_loss(actions, hint_batch)-self.hint_threshold).mean()))
+
+            print(f'{self.learn_counter} {self.rho} {self.alpha}')
+
+        self.learn_counter+=1
 
         self.update_network_parameters(self.target_critic_1, self.critic_1)
         self.update_network_parameters(self.target_critic_2, self.critic_2)
@@ -677,9 +683,9 @@ class DemixingAgent():
         self.replaymem.save_checkpoint()
 
     def load_models(self):
-        self.actor.load_checkpoint()
-        self.critic_1.load_checkpoint()
-        self.critic_2.load_checkpoint()
+        #self.actor.load_checkpoint()
+        #self.critic_1.load_checkpoint()
+        #self.critic_2.load_checkpoint()
         self.replaymem.load_checkpoint()
         self.actor.train()
         self.critic_1.train()

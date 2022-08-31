@@ -4,7 +4,21 @@ import numpy as np
 from demixingenv import DemixingEnv
 import pickle
 
+import torch
+import argparse
+
 if __name__ == '__main__':
+    parser=argparse.ArgumentParser(
+      description='Determine optimal directions in calibration',
+      formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument('--seed',default=0,type=int,metavar='s',
+       help='random seed to use')
+
+    args=parser.parse_args()
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+
     # directions in order: CasA,CygA,HerA,TauA,VirA and target
     K=6 # directions: last is the target direction, the rest are outlier sources
     # input dimensions, determined by
@@ -14,16 +28,16 @@ if __name__ == '__main__':
     provide_hint=True # to enable generation of hint from env
     env = DemixingEnv(K=K,Nf=3,Ninf=128,Npix=1024,Tdelta=10,provide_hint=provide_hint)
     # number of actions = K-1 for the K-1 outlier directions
-    agent = DemixingAgent(gamma=0.99, batch_size=64, n_actions=K-1, tau=0.005, max_mem_size=4096,
-                  input_dims=[1,Ninf,Ninf], M=M, lr_a=1e-3, lr_c=1e-3, alpha=0.03, use_hint=provide_hint)
+    agent = DemixingAgent(gamma=0.99, batch_size=256, n_actions=K-1, tau=0.005, max_mem_size=16000,
+                  input_dims=[1,Ninf,Ninf], M=M, lr_a=1e-4, lr_c=1e-3, alpha=0.03, use_hint=provide_hint)
     scores=[]
     n_games = 100
 
     total_steps=0
-    warmup_steps=400
+    warmup_steps=0 # begining 1000
     
     # load from disk DQN, replaymem
-    #agent.load_models()
+    agent.load_models()
     #with open('scores.pkl','rb') as f:
     #    scores=pickle.load(f)
 
@@ -50,6 +64,8 @@ if __name__ == '__main__':
               agent.store_transition(observation, action, reward, 
                                     observation_, done, np.zeros(K-1))
 
+            print(action)
+            print(hint)
             score += reward
             agent.learn()
             observation = observation_
@@ -65,6 +81,5 @@ if __name__ == '__main__':
 
         # after each game, save DQN, replaymem to disk
         agent.save_models()
-
-    with open('scores.pkl','wb') as f:
-      pickle.dump(scores,f)
+        with open('scores.pkl','wb') as f:
+          pickle.dump(scores,f)
