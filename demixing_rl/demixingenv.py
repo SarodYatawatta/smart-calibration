@@ -24,6 +24,10 @@ else:
 LOW=0.0
 HIGH=1.
 
+# scaling of input data to prevent saturation
+INF_SCALE=1e-3
+META_SCALE=1e-5
+
 EPS=0.01 # to make 1/(x+EPS) when x->0 not explode
 
 class DemixingEnv(gym.Env):
@@ -118,8 +122,8 @@ class DemixingEnv(gym.Env):
     metadata_update=self.metadata.copy()
     metadata_update[self.clus_id]=0
     observation={
-      'infmap': infdata,
-      'metadata': metadata_update }
+      'infmap': infdata*INF_SCALE,
+      'metadata': metadata_update*META_SCALE }
 
     self.std_residual=self.get_noise_(col='MODEL_DATA')
 
@@ -181,8 +185,8 @@ class DemixingEnv(gym.Env):
     infdata=infdata.astype(np.float32)
     hdul.close()
     observation={
-      'infmap': infdata,
-      'metadata': metadata }
+      'infmap': infdata*INF_SCALE,
+      'metadata': metadata*META_SCALE }
     # remember current action taken
     self.prev_clus_id=self.clus_id.copy()
 
