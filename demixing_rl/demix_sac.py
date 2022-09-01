@@ -560,9 +560,15 @@ class DemixingAgent():
 
         self.use_hint=use_hint
         if self.use_hint:
+           # two methods, method 1 : CSAC
+           # method 2: ADMM
+           self.hint_method=2
            self.hint_threshold=0.1
            self.rho=T.tensor(0.0,requires_grad=False,device=mydevice)
-           self.rho_lr=1e-4
+           if self.hint_method==1:
+             self.rho_lr=1e-4
+           else:
+             self.admm_rho=0.01
 
         # initialize targets (hard copy)
         self.update_network_parameters(self.target_critic_1, self.critic_1, tau=1.)
@@ -639,36 +645,66 @@ class DemixingAgent():
           self.critic_1.optimizer.step()
           self.critic_2.optimizer.step()
         else:
-          actions, log_probs = self.actor.sample_normal(state_batch, state_batch_sky, reparameterize=True)
-          critic_1_loss = F.mse_loss(q1_new_policy, new_q_value - self.rho*F.mse_loss(actions, hint_batch))
-          critic_2_loss = F.mse_loss(q2_new_policy, new_q_value - self.rho*F.mse_loss(actions, hint_batch))
-          critic_loss = critic_1_loss + critic_2_loss
+          if self.hint_method==1:
+             actions, log_probs = self.actor.sample_normal(state_batch, state_batch_sky, reparameterize=True)
+             critic_1_loss = F.mse_loss(q1_new_policy, new_q_value - self.rho*F.mse_loss(actions, hint_batch))
+             critic_2_loss = F.mse_loss(q2_new_policy, new_q_value - self.rho*F.mse_loss(actions, hint_batch))
+             critic_loss = critic_1_loss + critic_2_loss
 
-          self.critic_1.optimizer.zero_grad()
-          self.critic_2.optimizer.zero_grad()
-          critic_loss.backward(retain_graph=True)
-          self.critic_1.optimizer.step()
-          self.critic_2.optimizer.step()
+             self.critic_1.optimizer.zero_grad()
+             self.critic_2.optimizer.zero_grad()
+             critic_loss.backward(retain_graph=True)
+             self.critic_1.optimizer.step()
+             self.critic_2.optimizer.step()
 
-          q1_new_policy = self.critic_1.forward(state_batch, state_batch_sky, actions)
-          q2_new_policy = self.critic_2.forward(state_batch, state_batch_sky, actions)
-          critic_value = T.min(q1_new_policy, q2_new_policy)
+             q1_new_policy = self.critic_1.forward(state_batch, state_batch_sky, actions)
+             q2_new_policy = self.critic_2.forward(state_batch, state_batch_sky, actions)
+             critic_value = T.min(q1_new_policy, q2_new_policy)
 
-          actor_loss = (self.alpha*log_probs - critic_value).mean()
-          self.actor.optimizer.zero_grad()
-          actor_loss.backward()
-          self.actor.optimizer.step()
-          print(f'{actor_loss.data.item()}')
+             actor_loss = (self.alpha*log_probs - critic_value).mean()
+             self.actor.optimizer.zero_grad()
+             actor_loss.backward()
+             self.actor.optimizer.step()
+             print(f'{actor_loss.data.item()}')
+          else: # self.hint_method==2
+             actions, log_probs = self.actor.sample_normal(state_batch, state_batch_sky, reparameterize=True)
+             critic_1_loss = F.mse_loss(q1_new_policy, new_q_value)
+             critic_2_loss = F.mse_loss(q2_new_policy, new_q_value)
+             critic_loss = critic_1_loss + critic_2_loss
+
+             self.critic_1.optimizer.zero_grad()
+             self.critic_2.optimizer.zero_grad()
+             critic_loss.backward()
+             self.critic_1.optimizer.step()
+             self.critic_2.optimizer.step()
+
+             q1_new_policy = self.critic_1.forward(state_batch, state_batch_sky, actions)
+             q2_new_policy = self.critic_2.forward(state_batch, state_batch_sky, actions)
+             critic_value = T.min(q1_new_policy, q2_new_policy)
+
+             gfun=(T.max(self.zero_tensor,((F.mse_loss(actions, hint_batch)-self.hint_threshold)).mean()).pow(2))
+             actor_loss = (self.alpha*log_probs - critic_value).mean()+0.5*self.admm_rho*gfun*gfun+self.rho*gfun
+             self.actor.optimizer.zero_grad()
+             actor_loss.backward()
+             self.actor.optimizer.step()
+             print(f'{actor_loss.data.item()}')
+
 
         if self.learn_counter%10==0:
             with T.no_grad():
+               actions, log_probs = self.actor.sample_normal(state_batch, state_batch_sky, reparameterize=False)
                if self.learn_alpha:
-                  _, log_probs = self.actor.sample_normal(state_batch, state_batch_sky, reparameterize=False)
                   self.alpha=T.max(self.zero_tensor,self.alpha+self.alpha_lr*((self.target_entropy-(-log_probs)).mean()))
 
                if self.use_hint:
-                   self.rho=T.max(self.zero_tensor,self.rho+self.rho_lr*((F.mse_loss(actions, hint_batch)-self.hint_threshold).mean()))
+                   if self.hint_method==1:
+                      self.rho=T.max(self.zero_tensor,self.rho+self.rho_lr*((F.mse_loss(actions, hint_batch)-self.hint_threshold).mean()))
+                   else: # self.hint_method==2
+                      gfun=(T.max(self.zero_tensor,((F.mse_loss(actions, hint_batch)-self.hint_threshold)).mean()).pow(2))
+                      self.rho+=self.admm_rho*gfun
 
+        if self.use_hint:
+          if self.learn_counter%100==0:
             print(f'{self.learn_counter} {self.rho} {self.alpha}')
 
         self.learn_counter+=1
