@@ -18,8 +18,8 @@ if use_cuda and torch.cuda.is_available():
 else:
   mydevice=torch.device('cpu')
 
-LOW=np.log(1e-3)
-HIGH=np.log(1e-1)
+LOW=1e-3
+HIGH=1e-1
 class ENetEnv(gym.Env):
   """Elastic Net Custom Environment that follows gym interface"""
   metadata = {'render.modes': ['human']}
@@ -72,15 +72,15 @@ class ENetEnv(gym.Env):
   def step(self, action, keepnoise=False):
     done=False # make sure to return True at some point
     # update state based on the action  rho = scale*(action)
-    self.rho =np.exp(action*(HIGH-LOW)/2+(HIGH+LOW)/2)
+    self.rho =(action*(HIGH-LOW)/2+(HIGH+LOW)/2)
     penalty=0
     # make sure rho stays within limits, if this happens, add a penalty
     for ci in range(self.K):
-     if self.rho[ci]<np.exp(LOW):
-       self.rho[ci]=np.exp(LOW)
+     if self.rho[ci]<LOW:
+       self.rho[ci]=LOW
        penalty +=-0.1
-     if self.rho[ci]>np.exp(HIGH):
-       self.rho[ci]=np.exp(HIGH)
+     if self.rho[ci]>HIGH:
+       self.rho[ci]=HIGH
        penalty +=-0.1
 
     # generate data (by adding noise to noise-free data)
@@ -238,7 +238,7 @@ class ENetEnv(gym.Env):
     hint_[0]=best['lambda1']
     hint_[1]=best['lambda2']
     # map back to action space (inverse of what is done in step())
-    return (np.log(hint_)-(HIGH+LOW)/2)/((HIGH-LOW)/2)
+    return (hint_-(HIGH+LOW)/2)/((HIGH-LOW)/2)
  
   def close (self):
     pass
