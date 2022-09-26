@@ -31,9 +31,9 @@ if __name__ == '__main__':
     env = DemixingEnv(K=K,Nf=3,Ninf=128,Npix=1024,Tdelta=10,provide_hint=provide_hint)
     # number of actions = K-1 for the K-1 outlier directions
     agent = DemixingAgent(gamma=0.99, batch_size=256, n_actions=K-1, tau=0.005, max_mem_size=16000,
-                  input_dims=[1,Ninf,Ninf], M=M, lr_a=3e-4, lr_c=3e-4, alpha=0.03, hint_threshold=0.1, admm_rho=1.0, use_hint=provide_hint)
+                  input_dims=[1,Ninf,Ninf], M=M, lr_a=3e-4, lr_c=1e-3, alpha=0.03, hint_threshold=0.01, admm_rho=1.0, use_hint=provide_hint)
     scores=[]
-    n_games = 100
+    n_games = 710
 
     total_steps=0
     warmup_steps=0 # begining 1000
@@ -43,8 +43,8 @@ if __name__ == '__main__':
     #with open('scores.pkl','rb') as f:
     #    scores=pickle.load(f)
 
-    for i in range(100):
-        agent.learn()
+    #for i in range(100):
+    #    agent.learn()
 
     for i in range(n_games):
         score = 0
