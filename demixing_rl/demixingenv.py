@@ -101,7 +101,8 @@ class DemixingEnv(gym.Env):
     self.clus_id.append(self.K-1)
     # check if current cluster selection (action) is same as previous
     if self.prev_clus_id==self.clus_id:
-        done=True
+        #done=True
+        pass
     else:
         self.prev_clus_id=self.clus_id.copy()
     Kselected=len(self.clus_id)
@@ -152,7 +153,7 @@ class DemixingEnv(gym.Env):
         return observation, reward, done, info
 
   def reset(self):
-    # run input simulations
+    # run input simulations, for debugging use e.g., Tdelta=300,do_image=True
     separation,azimuth,elevation,freq,N=simulate_data(Nf=self.Nf)
     # remember stations
     self.N=N

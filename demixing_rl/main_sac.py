@@ -14,6 +14,8 @@ if __name__ == '__main__':
     )
     parser.add_argument('--seed',default=0,type=int,metavar='s',
        help='random seed to use')
+    parser.add_argument('--use_hint', action='store_true',default=False,
+       help='use hint or not')
 
     args=parser.parse_args()
     np.random.seed(args.seed)
@@ -25,11 +27,11 @@ if __name__ == '__main__':
     Ninf=128 # influence map Ninf x Ninf
     # metadata = (separation,azimuth,elevation) K + (lowest)frequency + n_stations= 3K+2
     M=3*K+2
-    provide_hint=True # to enable generation of hint from env
+    provide_hint=args.use_hint # to enable generation of hint from env
     env = DemixingEnv(K=K,Nf=3,Ninf=128,Npix=1024,Tdelta=10,provide_hint=provide_hint)
     # number of actions = K-1 for the K-1 outlier directions
     agent = DemixingAgent(gamma=0.99, batch_size=256, n_actions=K-1, tau=0.005, max_mem_size=16000,
-                  input_dims=[1,Ninf,Ninf], M=M, lr_a=1e-3, lr_c=1e-3, alpha=0.03, use_hint=provide_hint)
+                  input_dims=[1,Ninf,Ninf], M=M, lr_a=3e-4, lr_c=3e-4, alpha=0.03, hint_threshold=0.1, admm_rho=1.0, use_hint=provide_hint)
     scores=[]
     n_games = 100
 
@@ -60,11 +62,13 @@ if __name__ == '__main__':
 
             if provide_hint:
               observation_, reward, done, hint, info = env.step(action)
-              agent.store_transition(observation, action, reward, 
+              scaled_reward = reward *10 if reward>0 else reward
+              agent.store_transition(observation, action, scaled_reward,
                                     observation_, done, hint)
             else:
               observation_, reward, done, info = env.step(action)
-              agent.store_transition(observation, action, reward, 
+              scaled_reward = reward *10 if reward>0 else reward
+              agent.store_transition(observation, action, scaled_reward,
                                     observation_, done, np.zeros(K-1))
 
             print(action)

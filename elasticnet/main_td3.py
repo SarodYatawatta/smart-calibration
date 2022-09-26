@@ -5,12 +5,13 @@ import pickle
 from enetenv import ENetEnv
 from enet_td3 import Agent
 
-#np.random.seed(0)
+np.random.seed(0)
+torch.manual_seed(19)
 
 if __name__ == '__main__':
     N=20 # rows = data points
     M=20 # columns = parameters, note, if N<M, no unique solution
-    provide_hint=True# to enable generation of hint from env
+    provide_hint=True # to enable generation of hint from env
     env = ENetEnv(M,N,provide_hint=provide_hint)
     # actions: 2
     # prioritized=True for prioritized experience replay memory
@@ -18,7 +19,7 @@ if __name__ == '__main__':
                   max_mem_size=1024, input_dims=[N+N*M], lr_a=1e-3, lr_c=1e-3,
                  update_actor_interval=2, warmup=100, noise=0.1, prioritized=True,
                  use_hint=provide_hint)
-    agent.admm_rho=100
+    agent.admm_rho=1
     # note: input dims: N eigenvalues+ N*M size of design matrix, 
     # lr_a: learning rate actor, lr_c:learning rate critic
     scores=[]

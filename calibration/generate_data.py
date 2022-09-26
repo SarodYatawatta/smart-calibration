@@ -884,10 +884,10 @@ def add_column(msname,colname):
 # Nf: number of frequencies
 # returns: separation,azimuth,elevation (rad): Kx1 arrays
 #  freq (Hz): lowest freq, N: number of stations
-def simulate_data(Nf=3,Tdelta=10):
+def simulate_data(Nf=3,Tdelta=10,do_images=False):
     # K: directions for demixing + target
     K=6 # total must match = (A-team clusters + 1)
-    do_images=False
+    do_images=do_images
     do_solutions=True
     # HBA or LBA ?
     hba=(np.random.choice([0,1])==1)
@@ -1219,7 +1219,7 @@ def simulate_data(Nf=3,Tdelta=10):
         sb.run(sagecal+' -d '+MS+' -s sky0.txt -c cluster0.txt -t '+str(Tdelta)+' -O DATA -a 1 -B 2 -E 1',shell=True)
       sb.run('python addnoise.py '+MS+' '+str(SNR),shell=True)
       if do_images:
-        sb.run(excon+' -m '+MS+' -p 8 -x 2 -c DATA -d 12000 > /dev/null',shell=True)
+        sb.run(excon+' -m '+MS+' -p 30 -x 2 -c DATA -d 13000 > /dev/null',shell=True)
 
     # create average images
     if do_images:

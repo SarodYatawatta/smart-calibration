@@ -32,7 +32,7 @@ def lmtoradec(l,m,ra0,dec0):
   if l != 0:
    ra=math.atan2(-dl,cosd0-dm*sind0)+ra0
   else:
-   ra=atan2(1e-10,cosd0-dm*sind0)+ra0
+   ra=math.atan2(1e-10,cosd0-dm*sind0)+ra0
 
   return ra,dec
 
