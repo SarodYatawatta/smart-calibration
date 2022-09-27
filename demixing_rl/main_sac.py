@@ -72,7 +72,8 @@ if __name__ == '__main__':
                                     observation_, done, np.zeros(K-1))
 
             print(action)
-            print(hint)
+            if provide_hint:
+              print(hint)
             score += reward
             agent.learn()
             observation = observation_
