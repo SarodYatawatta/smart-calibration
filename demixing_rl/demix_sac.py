@@ -632,6 +632,14 @@ class DemixingAgent():
         q2_new_policy = self.critic_2.forward(state_batch, state_batch_sky, actions)
         critic_value = T.min(q1_new_policy, q2_new_policy)
 
+        # local function to calculate KLD
+        def kld_loss(action,hint):
+            # map from [-1,1] to [0,1], add epsilon to avoid 0
+            action_m=0.5*action+0.5+self.actor.reparam_noise
+            hint_m=0.5*hint+0.5+self.actor.reparam_noise
+            # KLD : hint * log(hint/action) = hint * (log hint - log action)
+            return hint_m*(T.log(hint_m)-T.log(action_m))
+
         if not self.use_hint:
           actor_loss = (self.alpha*log_probs - critic_value).mean()
 
@@ -639,7 +647,8 @@ class DemixingAgent():
           actor_loss.backward()
           self.actor.optimizer.step()
         else:
-             gfun=(T.max(self.zero_tensor,((F.mse_loss(actions, hint_batch)-self.hint_threshold)).mean()).pow(2))
+             #gfun=(T.max(self.zero_tensor,((F.mse_loss(actions, hint_batch)-self.hint_threshold)).mean()).pow(2))
+             gfun=(T.max(self.zero_tensor,((kld_loss(actions, hint_batch)-self.hint_threshold)).mean()).pow(2))
              actor_loss = (self.alpha*log_probs - critic_value).mean()+0.5*self.admm_rho*gfun*gfun+self.rho*gfun
              self.actor.optimizer.zero_grad()
              actor_loss.backward()
@@ -655,7 +664,8 @@ class DemixingAgent():
                   self.alpha=T.max(self.zero_tensor,self.alpha+self.alpha_lr*((self.target_entropy-(-log_probs)).mean()))
 
                if self.use_hint:
-                      gfun=(T.max(self.zero_tensor,((F.mse_loss(actions, hint_batch)-self.hint_threshold)).mean()).pow(2))
+                      #gfun=(T.max(self.zero_tensor,((F.mse_loss(actions, hint_batch)-self.hint_threshold)).mean()).pow(2))
+                      gfun=(T.max(self.zero_tensor,((kld_loss(actions, hint_batch)-self.hint_threshold)).mean()).pow(2))
                       self.rho+=self.admm_rho*gfun
 
         if self.learn_counter%100==0:
