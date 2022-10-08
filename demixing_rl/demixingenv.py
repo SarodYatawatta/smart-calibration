@@ -86,6 +86,7 @@ class DemixingEnv(gym.Env):
     self.metadata=np.zeros(3*self.K+2,dtype=np.float32)
     self.N=1
     self.prev_clus_id=None
+    self.reward0=0
 
     self.hint=None
     self.provide_hint=provide_hint
@@ -128,21 +129,10 @@ class DemixingEnv(gym.Env):
 
     self.std_residual=self.get_noise_(col='MODEL_DATA')
 
-    # reward ~ 1/(noise (var) reduction) /(clusters calibrated)
-    data_var=self.std_data*self.std_data
-    noise_var=self.std_residual*self.std_residual
-    # AIC = -log(likelihood) + 2 deg_of_freedom
-    # log(likelihood) ~ (normalized residual_sum_sqr)x baselines, 
-    # deg_of_freeedom ~ n_stations x n_directions
-    # so AIC ~ n_stations^2 x normalized_residual + n_stations x n_directions
-    # use -AIC as reward
-    reward=-self.N*self.N*noise_var/(data_var+EPS)-Kselected*self.N
+    # calculate reward, subtract from default step reward
+    reward=self.calculate_reward_(Kselected)-self.reward0
     influence_std=infdata.std()/100 # arbitray scaling, because influence is alreade scaled in calculation
-    # penalize by influence 
-    reward-=influence_std*influence_std
-    # normalize reward (mean/variance found by the initial ~3000 reward values)
-    reward=(reward-(-859))/3559.0
-    print('STD %f %f Inf %f K %d N %d reward %f'%(data_var,noise_var,influence_std,Kselected,self.N,reward))
+    print('STD %f %f Inf %f K %d N %d reward %f'%(self.std_data,self.std_residual,influence_std,Kselected,self.N,reward))
     info={}
     # calculate and store the hint for future use
     if self.provide_hint:
@@ -173,6 +163,9 @@ class DemixingEnv(gym.Env):
     sb.run(self.cmd_calc_influence,shell=True)
     self.std_data=self.get_noise_(col='DATA')
     self.std_residual=self.get_noise_(col='MODEL_DATA')
+
+    # caculate baseline reward for this episode, with only 1 direction calibrated
+    self.reward0=self.calculate_reward_(1)
     # concatenate metadata
     metadata=np.zeros(3*self.K+2,dtype=np.float32)
     metadata[:self.K]=separation
@@ -300,6 +293,21 @@ class DemixingEnv(gym.Env):
     # transform [0,1] back to [-1,1] space
     hint=(hint-(HIGH+LOW)/2)*(2/(HIGH-LOW))
     return hint
+
+  def calculate_reward_(self,Kselected):
+    # reward ~ 1/(noise (variance) reduction) /(clusters calibrated)
+    data_var=self.std_data*self.std_data
+    noise_var=self.std_residual*self.std_residual
+    # AIC = -log(likelihood) + 2 deg_of_freedom
+    # log(likelihood) ~ (normalized residual_sum_sqr)x baselines,
+    # deg_of_freeedom ~ n_stations x n_directions
+    # so AIC ~ n_stations^2 x normalized_residual + n_stations x n_directions
+    # use -AIC as reward
+    reward=-self.N*self.N*noise_var/(data_var+EPS)-Kselected*self.N
+    # normalize reward (mean/variance found by the initial ~3000 reward values)
+    reward=(reward-(-859))/3559.0
+
+    return reward
 
   def render(self, mode='human'):
     print('%%%%%%%%%%%%%%%%%%%%%%')
