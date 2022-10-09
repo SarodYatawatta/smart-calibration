@@ -38,8 +38,10 @@ if __name__ == '__main__':
     total_steps=0
     warmup_steps=0 # begining 1000
     
-    # load from disk DQN, replaymem
-    agent.load_models()
+    # load from disk networks, replaymem
+    #agent.load_models()
+    # load from disk replaymem
+    agent.load_replaybuffer()
     #with open('scores.pkl','rb') as f:
     #    scores=pickle.load(f)
 

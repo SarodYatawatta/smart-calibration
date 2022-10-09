@@ -687,10 +687,18 @@ class DemixingAgent():
         self.critic_2.save_checkpoint()
         self.replaymem.save_checkpoint()
 
+    def load_replaybuffer(self):
+        self.replaymem.load_checkpoint()
+        self.actor.train()
+        self.critic_1.train()
+        self.critic_2.train()
+        self.update_network_parameters(self.target_critic_1, self.critic_1, tau=1.)
+        self.update_network_parameters(self.target_critic_2, self.critic_2, tau=1.)
+
     def load_models(self):
-        #self.actor.load_checkpoint()
-        #self.critic_1.load_checkpoint()
-        #self.critic_2.load_checkpoint()
+        self.actor.load_checkpoint()
+        self.critic_1.load_checkpoint()
+        self.critic_2.load_checkpoint()
         self.replaymem.load_checkpoint()
         self.actor.train()
         self.critic_1.train()
