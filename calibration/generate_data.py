@@ -55,7 +55,7 @@ def find_valid_target(sky_model_gen_strat=0):
       close_to_Ateam=-1
     else:
       close_to_Ateam=np.random.randint(len(a_team_dirs)) # 0,...4 will select one of the above
-    distance_to_Ateam=1 # max distance of an Ateam source, in degrees
+    distance_to_Ateam=0.5+30*np.random.rand(1) # max distance of an Ateam source, in degrees
 
     low_el=3 # lowest elevation for a target
     valid_field=False
