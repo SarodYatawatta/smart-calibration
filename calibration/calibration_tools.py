@@ -16,6 +16,8 @@ def radectolm(ra,dec,ra0,dec0):
 
 
 def lmtoradec(l,m,ra0,dec0):
+  # note that this is not accurate for large fields of view,
+  # in such situations, need to use something like wcslib
   sind0=math.sin(dec0)
   cosd0=math.cos(dec0)
   dl=l
@@ -116,9 +118,49 @@ def readsolutions(filename):
   return (freq,J)
 
 
-# read solutions file for spatial model, return solutions Zspat tensor 
-# return N(stations), F(freq poly) theta,phi (polar coordinate of calibration dirs Kx1) and Z
+def read_global_solutions(filename):
+# read solutions for the global Z
+# return N(stations), freq(reference freq), P(polynomial terms), K(effective clusters) and Z (shape Time x clusters x 2*P*N x 2)
+  fh=open(filename,'r')
+  # skip first 2 lines
+  next(fh)
+  next(fh)
+  # next line: reference_freq(MHz) polynomial_order stations clusters effective_clusters
+  curline=next(fh)
+  cl=curline.split()
+  freq=float(cl[0])*1e6
+  P=int(cl[1])
+  Ns=int(cl[2])
+  K=int(cl[4]) # true clusters
+  # the remaining lines will have 1+K columns, first col from 0..8PN-1, 
+  # repeating for each timeslot
+  fullset=fh.readlines()
+  fh.close()
+  Nt=len(fullset)
+  Nto=Nt//(8*P*Ns)
+  a=np.zeros((Nt,K),dtype=np.float32)
+  ci=0
+  for cl in fullset:
+    cl1=cl.split()
+    for cj in range(len(cl1)-1):
+      a[ci,cj]=float(cl1[cj+1])
+    ci +=1
+  Z=np.zeros((Nto,K,2*P*Ns,2),dtype=np.csingle)
+  for ci in range(Nto):
+    for cj in range(K):
+      # eack col of a[] is one direction
+      # split each col of a[] to 4PN x 2 values,
+      # each 4PN yields 2PN complex, which is one Z[ci,cj]
+      b=a[ci*8*P*Ns:(ci+1)*8*P*Ns,cj]
+      c=b[0:8*P*Ns:2]+1j*b[1:8*P*Ns:2]
+      Z[ci,cj]=c.reshape((2*P*Ns,2),order='F')
+
+
+  return Ns,freq,P,K,Z
+
 def read_spatial_solutions(filename):
+# read solutions file for spatial model, return solutions Zspat tensor
+# return N(stations), F(freq poly terms), theta,phi (polar coordinate of calibration dirs Kx1) and Z(shape Time x 2N*F x 2G), so G can be implied from Z
   fh=open(filename,'r')
   # skip first 3 lines
   next(fh)
@@ -129,8 +171,8 @@ def read_spatial_solutions(filename):
   curline=next(fh)
   cl=curline.split()
   freq=float(cl[0])*1e6
-  F=int(cl[1]) # polynomials in frequency
-  G=int(cl[2]) # polynomials in space (spherical harmonics)
+  F=int(cl[1]) # how many polynomials in frequency
+  G=int(cl[2]) # how many polynomials in space (spherical harmonics)
   Ns=int(cl[3]) # stations
   K=int(cl[5]) # true directions
   # spherical harmonic order
@@ -871,4 +913,5 @@ def readcluster(clusterfile):
 #skytocoherencies('sky.txt','cluster.txt','smalluvw.txt',62,150e6,1,1.5)
 #read_rho('admm_rho.txt',2)
 #readuvw('smalluvw.txt')
-#read_spatial_solutions('spatial_zsol')
+#Ns,freq,P,K,Z=read_global_solutions('zsol')
+#Ns,F,thetak,phik,Z=read_spatial_solutions('spatial_zsol')
