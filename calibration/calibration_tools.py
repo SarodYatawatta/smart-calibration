@@ -294,6 +294,93 @@ def skytocoherencies(skymodel,clusterfile,uvwfile,N,freq,ra0,dec0):
   return K,C
   
 # return K,C
+def skytocoherencies_torch(skymodel,clusterfile,uvwfile,N,freq,ra0,dec0,device):
+# use skymodel,clusterfile and predict coherencies for uvwfile coordinates
+# C: K way tensor, each slice Tx4, T: total samples, 4: XX,XY(=0),YX(=0),YY
+# N : stations, ra0,dec0: phase center (rad), freq: frequency
+  # light speed
+  c=2.99792458e8
+  
+  # uvw file
+  fh=open(uvwfile,'r')
+  fullset=fh.readlines()
+  fh.close()
+  # total samples=baselines x timeslots
+  T=len(fullset)
+  uu=np.zeros(T,dtype=np.float32)
+  vv=np.zeros(T,dtype=np.float32)
+  ww=np.zeros(T,dtype=np.float32)
+  ci=0
+  for cl in fullset:
+   cl1=cl.split()
+   uu[ci]=float(cl1[0])
+   vv[ci]=float(cl1[1])
+   ww[ci]=float(cl1[2])
+   ci +=1
+
+  uu=torch.from_numpy(uu).to(device)
+  vv=torch.from_numpy(vv).to(device)
+  ww=torch.from_numpy(ww).to(device)
+  uu *=2.0*math.pi/c*freq
+  vv *=2.0*math.pi/c*freq
+  ww *=2.0*math.pi/c*freq
+  del fullset
+
+  fh=open(skymodel,'r')
+  fullset=fh.readlines()
+  fh.close()
+  S={}
+  for cl in fullset:
+   if (not cl.startswith('#')) and len(cl)>1:
+     cl1=cl.split()
+     S[cl1[0]]=cl1[1:]
+
+  fh=open(clusterfile,'r')
+  fullset=fh.readlines()
+  fh.close()
+  
+  # determine number of clusters
+  ci=0
+  for cl in fullset:
+   if (not cl.startswith('#')) and len(cl)>1:
+     ci +=1
+  K=ci
+  # coherencies: K clusters, T rows, 4=XX,XY,YX,YY
+  C=np.zeros((K,T,4),dtype=np.csingle)
+  C=torch.from_numpy(C).to(device)
+
+  # output sky/cluster info for input to DQN
+  # format of each line: cluster_id l m sI sP
+  #fh=open('./skylmn.txt','w+')
+  ck=0 # cluster id
+  for cl in fullset:
+   if (not cl.startswith('#')) and len(cl)>1:
+     cl1=cl.split()
+     for sname in cl1[2:]:
+       # 3:ra 3:dec sI 0 0 0 sP 0 0 0 0 0 0 freq0
+       sinfo=S[sname]
+       mra=(float(sinfo[0])+float(sinfo[1])/60.+float(sinfo[2])/3600.)*360./24.*math.pi/180.0
+       mdec=(float(sinfo[3])+float(sinfo[4])/60.+float(sinfo[5])/3600.)*math.pi/180.0
+       (myll,mymm,mynn)=radectolm(mra,mdec,ra0,dec0)
+       mysI=float(sinfo[6])
+       f0=float(sinfo[17])
+       fratio=math.log(freq/f0)
+       sIo=math.exp(math.log(mysI)+float(sinfo[10])*fratio+float(sinfo[11])*math.pow(fratio,2)+float(sinfo[12])*math.pow(fratio,3))
+       # add to C
+       uvw=(uu*myll+vv*mymm+ww*mynn)
+       XX=(torch.cos(uvw)+1j*torch.sin(uvw))*sIo
+       C[ck,:,0]=C[ck,:,0]+XX
+       #fh.write(str(ck)+' '+str(myll)+' '+str(mymm)+' '+str(mysI)+' '+str(sinfo[10])+'\n')
+     ck+=1
+  #fh.close()
+
+  # copy to YY 
+  for ck in range(K):
+    C[ck,:,3]=C[ck,:,0]
+
+  return K,C
+
+# return K,C
 def skytocoherencies_uvw(skymodel,clusterfile,uu,vv,ww,N,freq,ra0,dec0):
 # use skymodel,clusterfile and predict coherencies for uvwfile coordinates
 # C: K way tensor, each slice Tx4, T: total samples, 4: XX,XY(=0),YX(=0),YY
@@ -548,6 +635,50 @@ def Hessianres(R,C,J,N):
              del Res,Res1,Imp,Ci
   return H/(B*T)
 
+# return H=K x 4Nx4N tensor
+def Hessianres_torch(R,C,J,N,device):
+# B: baselines=N(N-1)/2
+# T: timeslots for this interval
+# R: 2*B*Tx2 - residual for this interval
+# C: KxB*Tx4 - coherencies for this interval
+# J: Kx2Nx2 - valid solution for this interval
+
+# instead of using input V, use residual R to calculate the Hessian
+# Hess is 4Nx4N matrix, build by accumulating 4x4 kron products into a NxN block matrix
+# and averaging over T time slots
+# notation:
+# Y \kron A_p^T ( Z ) A_q means p-th row, q-th col block is replaced by Y \kron Z (4x4) matrix
+# res_pq= V_pq - J_p C_pq J_q^H
+# then, p,q baseline contribution 
+# -C^\star kron A_p^T res  A_q - C^T kron A_q^T res^H A_p
+# + (C J_q^H J_q C^H)^T kron A_p^T A_p + (C^H J_p^H J_p C)^T kron A_q^T A_q
+
+  B=N*(N-1)//2
+  T=R.shape[0]//(2*B)
+  K=C.shape[0]
+  
+  H=torch.from_numpy(np.zeros((K,4*N,4*N),dtype=np.csingle)).to(device)
+
+  for k in range(K):
+    ck=0 
+    for cn in range(T):
+       for p in range(N-1):
+          for q in range(p+1,N):
+             Res=R[2*ck:2*(ck+1),:]
+             Ci=C[k,ck,:].reshape((2,2)).transpose(0,1).contiguous()
+             Imp=torch.kron(-torch.conj(Ci),Res)
+             H[k,4*p:4*(p+1),4*q:4*(q+1)] +=Imp
+             H[k,4*q:4*(q+1),4*p:4*(p+1)] +=torch.conj(Imp.transpose(0,1))
+             Res1=torch.matmul(Ci,torch.conj(J[k,2*q:2*(q+1),:].transpose(0,1)))
+             Res=torch.matmul(Res1,torch.conj(Res1.transpose(0,1)))
+             H[k,4*p:4*(p+1),4*p:4*(p+1)] +=torch.kron(Res.transpose(0,1).contiguous(),torch.eye(2).to(device))
+             Res1=torch.matmul(J[k,2*p:2*(p+1),:],Ci)
+             Res=torch.matmul(torch.conj(Res1.transpose(0,1)),Res1)
+             H[k,4*q:4*(q+1),4*q:4*(q+1)] +=torch.kron(Res.transpose(0,1).contiguous(),torch.eye(2).to(device))
+             ck+=1
+             del Res,Res1,Imp,Ci
+  return H/(B*T)
+
 
 # return dJ=K x 4N x 4B tensor
 def Dsolutions(C,J,N,Dgrad,r):
@@ -590,6 +721,51 @@ def Dsolutions(C,J,N,Dgrad,r):
             ck +=1
     
     dJ[k]=np.linalg.solve(Dgrad[k]+EPS*np.eye(4*N),AdV)
+
+
+  return dJ
+
+# return dJ=K x 4N x 4B tensor
+def Dsolutions_torch(C,J,N,Dgrad,r,device):
+# B: baselines=N(N-1)/2
+# T: timeslots for this interval
+# BT: BxT
+# C: KxB*Tx4 - coherencies for this interval
+# J: Kx2Nx2 - valid solution for this interval
+# evaluate vec(\partial J/ \partial x_pp,qq) for all possible pp,qq (baselines)
+# Dgrad is K x 4Nx4N tensor, build by accumulating 4x4 kron products into a NxN block matrix
+# r: 0,1,2...7 : determine which element of 2x2 matrix is 1
+# return dJ : K x 4N x N(N-1)/2 matrix (note: for each baseline, the values are averaged over timeslots)
+  B=N*(N-1)//2
+  T=C.shape[1]//B
+  K=C.shape[0]
+
+  dJ=torch.from_numpy(np.zeros((K,4*N,B),dtype=np.csingle)).to(device)
+
+  EPS=1e-12 # overcome singular matrix
+  # setup 4x1 vector, one goes to depending on r
+  rr=torch.from_numpy(np.zeros(8,dtype=np.float32)).to(device)
+  rr[r]=1.
+  dVpq=rr[0:8:2]+1j*rr[1:8:2]
+
+  for k in range(K):
+    # ck will fill each column
+    ck=0
+    # setup 4N x B matrix (fixme: use a sparse matrix)
+    AdV=torch.from_numpy(np.zeros((4*N,B),dtype=np.csingle)).to(device)
+    for cn in range(T):
+      for p in range(N-1):
+         for q in range(p+1,N):
+            # fill up column ck of AdV 
+            # left hand side (J_q C^H)^T , right hand side I
+            # kron product will fill only rows 4*(p-1)+1:4*p
+            Ci=C[k,ck,:].reshape((2,2)).transpose(0,1).contiguous()
+            lhs=torch.matmul(J[k,2*q:2*(q+1),:],torch.conj(Ci.transpose(0,1).contiguous()))
+            fillvex=torch.matmul(torch.kron(lhs.transpose(0,1).contiguous(),torch.eye(2).to(device)),dVpq)
+            AdV[4*p:4*(p+1),ck%B] +=fillvex
+            ck +=1
+    
+    dJ[k]=torch.linalg.solve(Dgrad[k]+EPS*torch.eye(4*N).to(device),AdV)
 
 
   return dJ
@@ -641,6 +817,52 @@ def Dsolutions_r(C,J,N,Dgrad):
   return dJ
 
 
+# return dJ= 8 x K x 4N x 4B tensor (for all possible r values)
+def Dsolutions_r_torch(C,J,N,Dgrad,device):
+# B: baselines=N(N-1)/2
+# T: timeslots for this interval
+# BT: BxT
+# C: KxB*Tx4 - coherencies for this interval
+# J: Kx2Nx2 - valid solution for this interval
+# evaluate vec(\partial J/ \partial x_pp,qq) for all possible pp,qq (baselines)
+# Dgrad is K x 4Nx4N tensor, build by accumulating 4x4 kron products into a NxN block matrix
+# loop over r: 0,1,2...7 : determine which element of 2x2 matrix is 1 (first dimension in dJ)
+# return dJ : 8 x K x 4N x N(N-1)/2 matrix (note: for each baseline, the values are averaged over timeslots)
+  B=N*(N-1)//2
+  T=C.shape[1]//B
+  K=C.shape[0]
+
+  dJ=torch.from_numpy(np.zeros((8,K,4*N,B),dtype=np.csingle)).to(device)
+
+  EPS=1e-12 # overcome singular matrix
+  for k in range(K):
+    # ck will fill each column
+    ck=0
+    # setup 4N x B matrix (fixme: use a sparse matrix)
+    AdV=torch.from_numpy(np.zeros((8,4*N,B),dtype=np.csingle)).to(device)
+    for cn in range(T):
+      for p in range(N-1):
+         for q in range(p+1,N):
+            # fill up column ck of AdV 
+            # left hand side (J_q C^H)^T , right hand side I
+            # kron product will fill only rows 4*(p-1)+1:4*p
+            Ci=C[k,ck,:].reshape((2,2)).transpose(0,1).contiguous()
+            lhs=torch.matmul(J[k,2*q:2*(q+1),:],torch.conj(Ci.transpose(0,1)))
+            for r in range(8):
+              # setup 4x1 vector, one goes to depending on r
+              rr=torch.from_numpy(np.zeros(8,dtype=np.float32)).to(device)
+              rr[r]=1.
+              dVpq=rr[0:8:2]+1j*rr[1:8:2]
+              fillvex=torch.matmul(torch.kron(lhs.transpose(0,1).contiguous(),torch.eye(2).to(device)),dVpq)
+              AdV[r,4*p:4*(p+1),ck%B] +=fillvex
+            ck +=1
+    
+    # iterate over r
+    dJ[0:8,k]=torch.linalg.solve(Dgrad[k]+EPS*torch.eye(4*N).to(device),AdV[0:8])
+
+
+  return dJ
+
 
 # dR: 4B x B (sum up all K)
 def Dresiduals(C,J,N,dJ,addself,r):
@@ -680,6 +902,53 @@ def Dresiduals(C,J,N,dJ,addself,r):
             # kron product will fill only rows 4*(p-1)+1:4*p, column ck of dJ
             rhs=dJ[k,4*p:4*(p+1),:]
             fillvex=np.matmul(np.kron(lhs,np.eye(2)),rhs)
+            ck1=ck%B
+            if addself:
+              fillvex[:,ck1] +=dVpq
+
+            dR[4*ck1:4*(ck1+1),:] +=fillvex
+            ck +=1
+
+  return dR/(B*T)
+
+# dR: 4B x B (sum up all K)
+def Dresiduals_torch(C,J,N,dJ,addself,r,device):
+# B: baselines=N(N-1)/2
+# T: timeslots for this interval
+# BT: BxT
+# C: KxB*Tx4 - coherencies for this interval
+# J: Kx2Nx2 - valid solution for this interval
+# dJ: Kx4Nx4B
+# to find vec(\partial V_pq / \partial x_pp,qq) - vec(\partial (eq 24)_pq / \partial x_pp,qq), select rows 4*(p-1)+1:4p from dSol
+# note: dJ : K x 4N x N(N-1)/2 for all possible pp,qq combinations
+# dR: 4B x B, rows for all possible p,q and columns for all possible pp,qq (averaged over all time slots)
+# p,q: B rows (4 times) : 4B rows,
+# columns : B for all possible pp,qq values
+# note: r 1,2...8 : determine which element of 2x2 matrix (\partialV_pq/\partial x_pp,qq) is 1
+# r should be the same value used to find dSol
+# addself: if 1, add (\partialV_pq/\partial x_pp,qq) to the block diagonal
+  B=N*(N-1)//2
+  T=C.shape[1]//B
+  K=C.shape[0]
+
+  dR=torch.from_numpy(np.zeros((4*B,B),dtype=np.csingle)).to(device)
+  # setup 4x1 vector, one goes to depending on r
+  rr=torch.from_numpy(np.zeros(8,dtype=np.float32)).to(device)
+  rr[r]=1.
+  dVpq=rr[0:8:2]+1j*rr[1:8:2]
+  for k in range(K):
+    # ck will fill each column
+    ck=0
+    for cn in range(T):
+      for p in range(N-1):
+         for q in range(p+1,N):
+            # fill up ck-th block of 4 rows in dR
+            # left hand side -(C J_q^H)^T , right hand side I
+            Ci=C[k,ck,:].reshape((2,2)).transpose(0,1).contiguous()
+            lhs=-torch.matmul(Ci,torch.conj(J[k,2*q:2*(q+1),:].transpose(0,1).contiguous())).transpose(0,1).contiguous()
+            # kron product will fill only rows 4*(p-1)+1:4*p, column ck of dJ
+            rhs=dJ[k,4*p:4*(p+1),:]
+            fillvex=torch.matmul(torch.kron(lhs,torch.eye(2).to(device)),rhs)
             ck1=ck%B
             if addself:
               fillvex[:,ck1] +=dVpq
@@ -777,6 +1046,55 @@ def Dresiduals_r(C,J,N,dJ,addself):
               if addself:
                 # setup 4x1 vector, one goes to depending on r
                 rr=np.zeros(8,dtype=np.float32)
+                rr[r]=1.
+                dVpq=rr[0:8:2]+1j*rr[1:8:2]
+                fillvex[:,ck1] +=dVpq
+
+              dR[r,4*ck1:4*(ck1+1),:] +=fillvex
+            ck +=1
+
+  return dR/(B*T)
+
+# dR: 8 x 4B x B (sum up all K) (for all possible r values)
+def Dresiduals_r_torch(C,J,N,dJ,addself,device):
+# B: baselines=N(N-1)/2
+# T: timeslots for this interval
+# BT: BxT
+# C: KxB*Tx4 - coherencies for this interval
+# J: Kx2Nx2 - valid solution for this interval
+# dJ: 8 x Kx4Nx4B (for all possible r)
+# to find vec(\partial V_pq / \partial x_pp,qq) - vec(\partial (eq 24)_pq / \partial x_pp,qq), select rows 4*(p-1)+1:4p from dSol
+# note: dJ : K x 4N x N(N-1)/2 for all possible pp,qq combinations
+# dR: 4B x B, rows for all possible p,q and columns for all possible pp,qq (averaged over all time slots)
+# p,q: B rows (4 times) : 4B rows,
+# columns : B for all possible pp,qq values
+# note: loop over r 1,2...8 : determine which element of 2x2 matrix (\partialV_pq/\partial x_pp,qq) is 1
+# r should be the same value used to find dSol
+# addself: if 1, add (\partialV_pq/\partial x_pp,qq) to the block diagonal
+  B=N*(N-1)//2
+  T=C.shape[1]//B
+  K=C.shape[0]
+
+  dR=torch.from_numpy(np.zeros((8,4*B,B),dtype=np.csingle)).to(device)
+  for k in range(K):
+    # ck will fill each column
+    ck=0
+    for cn in range(T):
+      for p in range(N-1):
+         for q in range(p+1,N):
+            # fill up ck-th block of 4 rows in dR
+            # left hand side -(C J_q^H)^T , right hand side I
+            Ci=C[k,ck,:].reshape((2,2)).transpose(0,1).contiguous()
+            lhs=-torch.matmul(Ci,torch.conj(J[k,2*q:2*(q+1),:].transpose(0,1).contiguous())).transpose(0,1).contiguous()
+            # kron product will fill only rows 4*(p-1)+1:4*p, column ck of dJ
+            for r in range(8):
+              rhs=dJ[r,k,4*p:4*(p+1),:]
+
+              fillvex=torch.matmul(torch.kron(lhs,torch.eye(2).to(device)),rhs)
+              ck1=ck%B
+              if addself:
+                # setup 4x1 vector, one goes to depending on r
+                rr=torch.from_numpy(np.zeros(8,dtype=np.float32)).to(device)
                 rr[r]=1.
                 dVpq=rr[0:8:2]+1j*rr[1:8:2]
                 fillvex[:,ck1] +=dVpq

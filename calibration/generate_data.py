@@ -883,7 +883,9 @@ def add_column(msname,colname):
 # Simulate a LOFAR observation, and sky models
 # Nf: number of frequencies
 # returns: separation,azimuth,elevation (rad): Kx1 arrays
-#  freq (Hz): lowest freq, N: number of stations
+#  freq_low, freq_high (Hz): lowest/highest freq, 
+# ra0, dec0: phase center (rad)
+# N: number of stations
 def simulate_data(Nf=3,Tdelta=10,do_images=False):
     # K: directions for demixing + target
     K=6 # total must match = (A-team clusters + 1)
@@ -1225,4 +1227,4 @@ def simulate_data(Nf=3,Tdelta=10,do_images=False):
     if do_images:
       sb.run('bash ./calmean.sh \'L_SB*.MS_I*fits\' 1 && python calmean_.py && mv bar.fits data.fits',shell=True)
 
-    return separation,azimuth,elevation,freqlist[0],N
+    return separation,azimuth,elevation,freqlist[0],freqlist[Nf-1],ra0,dec0,N

@@ -11,7 +11,7 @@ while [ $ci -le 4 ]; do # -le 8 for all freqs
   MS="L_SB"$ci".MS";
  fi
  python ./readcorr.py $MS smalluvw.txt;
- python  ./analysis.py ./sky.txt ./cluster.txt ./smalluvw.txt ./admm_rho.txt $MS.solutions 0.1 4 # last parameters: alpha number_of_parallel_jobs
+ python  ./analysis.py ./sky.txt ./cluster.txt ./smalluvw.txt ./admm_rho.txt $MS.solutions ./zsol 0.1 4 # last parameters: alpha number_of_parallel_jobs
  python ./writecorr.py $MS fff;
  # -x 2 for fullpol
  /home/sarod/work/excon/src/MS/excon -x 0 -m $MS -c CORRECTED_DATA -d 128 -p 20
