@@ -2,6 +2,7 @@ import math,sys,uuid
 import numpy as np
 import numpy.matlib
 import torch
+from torch.multiprocessing import Pool,Process,set_start_method
 from calibration_tools import *
 
 # (try to) use a GPU for computation?
@@ -11,13 +12,70 @@ if use_cuda and torch.cuda.is_available():
 else:
   mydevice=torch.device('cpu')
 
-def globalize(func):
-  def result(*args, **kwargs):
-    return func(*args, **kwargs)
-  result.__name__ = result.__qualname__ = uuid.uuid4().hex
-  setattr(sys.modules[result.__module__], result.__name__, result)
-  return result
+def process_chunk(ncal,XX,XY,YX,YY,Ct,J,Hadd,T,Ts,B,N,loop_in_r,fullpol):
+        ts=ncal*T
+        print('%d %d %d'%(ts,Ts,ncal))
+        R=np.zeros((2*B*T,2),dtype=np.csingle)
+        R=torch.from_numpy(R).to(mydevice)
+        R[0:2*B*T:2,0]=XX[ts*B:ts*B+B*T]
+        R[0:2*B*T:2,1]=XY[ts*B:ts*B+B*T]
+        R[1:2*B*T:2,0]=YX[ts*B:ts*B+B*T]
+        R[1:2*B*T:2,1]=YY[ts*B:ts*B+B*T]
+       
+        # D_Jgrad K x 4Nx4N tensor
+        H=Hessianres_torch(R,Ct[:,ts*B:ts*B+B*T],J[:,ncal*2*N:ncal*2*N+2*N],N,mydevice)
+        H+=Hadd
+       
+        # set to zero
+        XX[ts*B:ts*B+B*T]=0
+        XY[ts*B:ts*B+B*T]=0
+        YX[ts*B:ts*B+B*T]=0
+        YY[ts*B:ts*B+B*T]=0
+       
+        if loop_in_r:
+          for r in range(8):
+            # dJ: K x 4NxB tensor
+            dJ=Dsolutions_torch(Ct[:,ts*B:ts*B+B*T],J[:,ncal*2*N:ncal*2*N+2*N],N,H,r,mydevice)
+            # dR: 4B x B (sum up all K)
+            dR=Dresiduals_torch(Ct[:,ts*B:ts*B+B*T],J[:,ncal*2*N:ncal*2*N+2*N],N,dJ,0,r,mydevice) # 0 for not adding I to dR
+            # find mean value over columns
+            dR11=torch.mean(dR[0:4*B:4],dim=0)
+            dR11=torch.squeeze(dR11.repeat(1,T))
+            XX[ts*B:ts*B+B*T] +=dR11
+            dR11=torch.mean(dR[3:4*B:4],dim=0)
+            dR11=torch.squeeze(dR11.repeat(1,T))
+            YY[ts*B:ts*B+B*T] +=dR11
+            if fullpol:
+              dR11=torch.mean(dR[1:4*B:4],dim=0)
+              dR11=torch.squeeze(dR11.repeat(1,T))
+              XY[ts*B:ts*B+B*T] +=dR11
+              dR11=torch.mean(dR[2:4*B:4],dim=0)
+              dR11=torch.squeeze(dR11.repeat(1,T))
+              YX[ts*B:ts*B+B*T] +=dR11
+        else:
+          # dJ: 8 x K x 4NxB tensor
+          dJ=Dsolutions_r_torch(Ct[:,ts*B:ts*B+B*T],J[:,ncal*2*N:ncal*2*N+2*N],N,H,mydevice)
+          # dR: 8 x 4B x B (sum up all K)
+          dR=Dresiduals_r_torch(Ct[:,ts*B:ts*B+B*T],J[:,ncal*2*N:ncal*2*N+2*N],N,dJ,0,mydevice) # 0 for not adding I to dR
+          # find mean value over columns
+          for r in range(8):
+            dR11=torch.mean(dR[r,0:4*B:4],dim=0)
+            dR11=torch.squeeze(dR11.repeat(1,T))
+            XX[ts*B:ts*B+B*T] +=dR11
+            dR11=torch.mean(dR[r,3:4*B:4],dim=0)
+            dR11=torch.squeeze(dR11.repeat(1,T))
+            YY[ts*B:ts*B+B*T] +=dR11
+            if fullpol:
+              dR11=torch.mean(dR[r,1:4*B:4],dim=0)
+              dR11=torch.squeeze(dR11.repeat(1,T))
+              XY[ts*B:ts*B+B*T] +=dR11
+              dR11=torch.mean(dR[r,2:4*B:4],dim=0)
+              dR11=torch.squeeze(dR11.repeat(1,T))
+              YX[ts*B:ts*B+B*T] +=dR11
 
+        del R,H,dJ,dR,dR11
+
+ 
 def analysis_uvwdir_loop(skymodel,clusterfile,uvwfile,rhofile,solutionsfile,z_solfile,flow=110,fhigh=170,ra0=0,dec0=math.pi/2,tslots=10,alpha=0.1,Nparallel=4):
     # ra0,dec0: phase center (rad)
     # tslots: -t option
@@ -95,75 +153,17 @@ def analysis_uvwdir_loop(skymodel,clusterfile,uvwfile,rhofile,solutionsfile,z_so
      else:
        Hadd[ci]=0.5*rho[ci]*np.kron(np.eye(2),np.matmul(FF,np.eye(2*N)+np.matmul(np.linalg.pinv(np.eye(2*N)-FF),FF)))
 
-############################# loop over timeslots
-############################# local function
-    def process_chunk(ncal):
-        ts=ncal*T
-        print('%d %d %d'%(ts,Ts,ncal))
-        R=np.zeros((2*B*T,2),dtype=np.csingle)
-        R=torch.from_numpy(R).to(mydevice)
-        R[0:2*B*T:2,0]=XX[ts*B:ts*B+B*T]
-        R[0:2*B*T:2,1]=XY[ts*B:ts*B+B*T]
-        R[1:2*B*T:2,0]=YX[ts*B:ts*B+B*T]
-        R[1:2*B*T:2,1]=YY[ts*B:ts*B+B*T]
-       
-        # D_Jgrad K x 4Nx4N tensor
-        H=Hessianres_torch(R,Ct[:,ts*B:ts*B+B*T],J[:,ncal*2*N:ncal*2*N+2*N],N,mydevice)
-        H+=Hadd
-       
-        # set to zero
-        XX[ts*B:ts*B+B*T]=0
-        XY[ts*B:ts*B+B*T]=0
-        YX[ts*B:ts*B+B*T]=0
-        YY[ts*B:ts*B+B*T]=0
-       
-        if loop_in_r:
-          for r in range(8):
-            # dJ: K x 4NxB tensor
-            dJ=Dsolutions_torch(Ct[:,ts*B:ts*B+B*T],J[:,ncal*2*N:ncal*2*N+2*N],N,H,r,mydevice)
-            # dR: 4B x B (sum up all K)
-            dR=Dresiduals_torch(Ct[:,ts*B:ts*B+B*T],J[:,ncal*2*N:ncal*2*N+2*N],N,dJ,0,r,mydevice) # 0 for not adding I to dR
-            # find mean value over columns
-            dR11=torch.mean(dR[0:4*B:4],dim=0)
-            dR11=torch.squeeze(dR11.repeat(1,T))
-            XX[ts*B:ts*B+B*T] +=dR11
-            dR11=torch.mean(dR[3:4*B:4],dim=0)
-            dR11=torch.squeeze(dR11.repeat(1,T))
-            YY[ts*B:ts*B+B*T] +=dR11
-            if fullpol:
-              dR11=torch.mean(dR[1:4*B:4],dim=0)
-              dR11=torch.squeeze(dR11.repeat(1,T))
-              XY[ts*B:ts*B+B*T] +=dR11
-              dR11=torch.mean(dR[2:4*B:4],dim=0)
-              dR11=torch.squeeze(dR11.repeat(1,T))
-              YX[ts*B:ts*B+B*T] +=dR11
-        else:
-          # dJ: 8 x K x 4NxB tensor
-          dJ=Dsolutions_r_torch(Ct[:,ts*B:ts*B+B*T],J[:,ncal*2*N:ncal*2*N+2*N],N,H,mydevice)
-          # dR: 8 x 4B x B (sum up all K)
-          dR=Dresiduals_r_torch(Ct[:,ts*B:ts*B+B*T],J[:,ncal*2*N:ncal*2*N+2*N],N,dJ,0,mydevice) # 0 for not adding I to dR
-          # find mean value over columns
-          for r in range(8):
-            dR11=torch.mean(dR[r,0:4*B:4],dim=0)
-            dR11=torch.squeeze(dR11.repeat(1,T))
-            XX[ts*B:ts*B+B*T] +=dR11
-            dR11=torch.mean(dR[r,3:4*B:4],dim=0)
-            dR11=torch.squeeze(dR11.repeat(1,T))
-            YY[ts*B:ts*B+B*T] +=dR11
-            if fullpol:
-              dR11=torch.mean(dR[r,1:4*B:4],dim=0)
-              dR11=torch.squeeze(dR11.repeat(1,T))
-              XY[ts*B:ts*B+B*T] +=dR11
-              dR11=torch.mean(dR[r,2:4*B:4],dim=0)
-              dR11=torch.squeeze(dR11.repeat(1,T))
-              YX[ts*B:ts*B+B*T] +=dR11
+    XX.share_memory_()
+    XY.share_memory_()
+    YX.share_memory_()
+    YY.share_memory_()
 
-        del R,H,dJ,dR,dR11
-############################# end local function
-############################# loop over timeslots
-
-    for nt in range(Ts):
-        process_chunk(nt)
+    # create pool
+    pool=Pool(processes=Nparallel)
+    argin=[(ci,XX,XY,YX,YY,Ct,J,Hadd,T,Ts,B,N,loop_in_r,fullpol) for ci in range(Ts)]
+    pool.starmap(process_chunk,argin)
+    pool.close()
+    pool.join()
 
     scalefactor=8*(N*(N-1)/2)*T 
     # scale by 8*(N*(N-1)/2)*T    
@@ -180,6 +180,12 @@ def analysis_uvwdir_loop(skymodel,clusterfile,uvwfile,rhofile,solutionsfile,z_so
 
 
 if __name__ == '__main__':
+  # setup multiprocessing
+  try:
+    set_start_method('spawn')
+  except RuntimeError:
+    pass
+
   # args skymodel clusterfile uvwfile rhofile solutionsfile z_solutions_file freq_low(MHz) freq_high(MHz) ra0 dec0 tslots alpha parallel_jobs
   import sys
   argc=len(sys.argv)
