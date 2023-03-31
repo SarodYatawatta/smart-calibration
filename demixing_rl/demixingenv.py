@@ -332,9 +332,9 @@ class DemixingEnv(gym.Env):
        MS='L_SB'+str(ci)+'.MS'
        sb.run('rm -rf '+MS,shell=True)
 
-dem=DemixingEnv(K=6,Nf=3,Ninf=128,Npix=1024,Tdelta=10)
-obs=dem.reset()
-hint=dem.get_hint()
+#dem=DemixingEnv(K=6,Nf=3,Ninf=128,Npix=1024,Tdelta=10)
+#obs=dem.reset()
+#hint=dem.get_hint()
 #sb.run('mv influenceI.fits inf0.fits',shell=True)
 #sb.run('mv MODEL_DATA.fits MODEL0.fits',shell=True)
 #action=np.zeros(5)
