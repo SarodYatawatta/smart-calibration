@@ -2,6 +2,8 @@
 
 export CUDA_VISIBLE_DEVICES=0,1
 
+# mandetory arguments for this script: freq_low(MHz) freq_high(MHz) ra0 dec0 time_slots
+
 #let "ci = 1";
 let "ci = 4"; # only use mid frequency
 while [ $ci -le 4 ]; do # -le 8 for all freqs
@@ -11,7 +13,7 @@ while [ $ci -le 4 ]; do # -le 8 for all freqs
   MS="L_SB"$ci".MS";
  fi
  python ./readcorr.py $MS smalluvw.txt;
- python  ./analysis.py ./sky.txt ./cluster.txt ./smalluvw.txt ./admm_rho.txt $MS.solutions ./zsol 0.1 4 # last parameters: alpha number_of_parallel_jobs
+ python  ./analysis_torch.py ./sky.txt ./cluster.txt ./smalluvw.txt ./admm_rho.txt $MS.solutions ./zsol $1 $2 $3 $4 $5 0.1 1 # last parameters: alpha number_of_parallel_jobs(=1 for GPU version)
  python ./writecorr.py $MS fff;
  # -x 2 for fullpol
  /home/sarod/work/excon/src/MS/excon -x 0 -m $MS -c CORRECTED_DATA -d 128 -p 20

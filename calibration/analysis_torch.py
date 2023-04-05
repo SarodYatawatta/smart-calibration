@@ -15,8 +15,7 @@ else:
 def process_chunk(ncal,XX,XY,YX,YY,Ct,J,Hadd,T,Ts,B,N,loop_in_r,fullpol):
         ts=ncal*T
         print('%d %d %d'%(ts,Ts,ncal))
-        R=np.zeros((2*B*T,2),dtype=np.csingle)
-        R=torch.from_numpy(R).to(mydevice)
+        R=torch.zeros((2*B*T,2),dtype=torch.cfloat).to(mydevice)
         R[0:2*B*T:2,0]=XX[ts*B:ts*B+B*T]
         R[0:2*B*T:2,1]=XY[ts*B:ts*B+B*T]
         R[1:2*B*T:2,0]=YX[ts*B:ts*B+B*T]
@@ -151,7 +150,7 @@ def analysis_uvwdir_loop(skymodel,clusterfile,uvwfile,rhofile,solutionsfile,z_so
        Htilde=H11-np.matmul(H12,np.matmul(np.linalg.pinv(H22),H21))
        Hadd[ci]=torch.from_numpy(np.kron(np.eye(2),Htilde)).to(mydevice)
      else:
-       Hadd[ci]=0.5*rho[ci]*np.kron(np.eye(2),np.matmul(FF,np.eye(2*N)+np.matmul(np.linalg.pinv(np.eye(2*N)-FF),FF)))
+       Hadd[ci]=torch.from_numpy(0.5*rho[ci]*np.kron(np.eye(2),np.matmul(FF,np.eye(2*N)+np.matmul(np.linalg.pinv(np.eye(2*N)-FF),FF)))).to(mydevice)
 
     XX.share_memory_()
     XY.share_memory_()
