@@ -450,11 +450,11 @@ def simulate_models(K=4,N=62,ra0=0,dec0=math.pi/2,Ts=6):
 
 # main method: no arguments is default
 if __name__ == '__main__':
-  # args 
+  # args K N ra0 dec0 Ts
   import sys
   argc=len(sys.argv)
   if argc>2:
-   simulate_models(sys.argv[1],sys.argv[2])
+   simulate_models(K=int(sys.argv[1]),N=int(sys.argv[2]),ra0=float(sys.argv[3]),dec0=float(sys.argv[4]),Ts=int(sys.argv[5]))
   else:
    simulate_models()
 
