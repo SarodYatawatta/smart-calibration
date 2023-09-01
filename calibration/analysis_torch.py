@@ -75,11 +75,12 @@ def process_chunk(ncal,XX,XY,YX,YY,Ct,J,Hadd,T,Ts,B,N,loop_in_r,fullpol):
         del R,H,dJ,dR,dR11
 
  
-def analysis_uvwdir_loop(skymodel,clusterfile,uvwfile,rhofile,solutionsfile,z_solfile,flow=110,fhigh=170,ra0=0,dec0=math.pi/2,tslots=10,alpha=0.1,Nparallel=4):
+def analysis_uvwdir_loop(skymodel,clusterfile,uvwfile,rhofile,solutionsfile,z_solfile,flow=110,fhigh=170,ra0=0,dec0=math.pi/2,tslots=10,Nparallel=4):
     # ra0,dec0: phase center (rad)
     # tslots: -t option
-    # alpha: spatial constraint regularization parameter
     # Nparallel=number of parallel jobs to use
+
+    # alpha: spatial constraint regularization parameter (also read from rhofile)
     flow=flow*1e6
     fhigh=fhigh*1e6
    
@@ -108,7 +109,7 @@ def analysis_uvwdir_loop(skymodel,clusterfile,uvwfile,rhofile,solutionsfile,z_so
     
     # ADMM rho, per each direction, scale later
     # scale rho linearly with sI
-    rho=read_rho(rhofile,K)
+    rho_spectral,rho_spatial=read_rho(rhofile,K)
 
     # read u,v,w,xx(re,im), xy(re,im) yx(re,im) yy(re,im)
     XX,XY,YX,YY=readuvw(uvwfile)
@@ -118,6 +119,7 @@ def analysis_uvwdir_loop(skymodel,clusterfile,uvwfile,rhofile,solutionsfile,z_so
 
     # check this agrees with solutions
     nx,ny=J[0].shape
+    print(f'tslots={tslots} Ts={Ts} nx={nx} ny={ny}')
     if nx<2*N*Ts:
      print('Error: solutions size does not match with data size')
      exit
@@ -139,18 +141,19 @@ def analysis_uvwdir_loop(skymodel,clusterfile,uvwfile,rhofile,solutionsfile,z_so
     for ci in range(K):
      # note: F is dependent on rho when alpha!=0 
      # example: making F=rand(2N,2N) makes performance worse
-     F,P=consensus_poly(Ne,N,f,f0,fidx,polytype=polytype,rho=rho[ci],alpha=alpha)
+     alpha=rho_spatial[ci]
+     F,P=consensus_poly(Ne,N,f,f0,fidx,polytype=polytype,rho=rho_spectral[ci],alpha=alpha)
      FF=np.matmul(F.transpose(),F)
      if alpha>0.0:
        PP=np.matmul(P.transpose(),P)
-       H11=0.5*rho[ci]*FF+0.5*alpha*rho[ci]*rho[ci]*PP
-       H12=0.5*FF+0.5*alpha*rho[ci]*PP
+       H11=0.5*rho_spectral[ci]*FF+0.5*alpha*rho_spectral[ci]*rho_spectral[ci]*PP
+       H12=0.5*FF+0.5*alpha*rho_spectral[ci]*PP
        H21=H12
-       H22=-0.5/rho[ci]*(np.eye(2*N)-FF)+0.5*alpha*PP
+       H22=-0.5/rho_spectral[ci]*(np.eye(2*N)-FF)+0.5*alpha*PP
        Htilde=H11-np.matmul(H12,np.matmul(np.linalg.pinv(H22),H21))
        Hadd[ci]=torch.from_numpy(np.kron(np.eye(2),Htilde)).to(mydevice)
      else:
-       Hadd[ci]=torch.from_numpy(0.5*rho[ci]*np.kron(np.eye(2),np.matmul(FF,np.eye(2*N)+np.matmul(np.linalg.pinv(np.eye(2*N)-FF),FF)))).to(mydevice)
+       Hadd[ci]=torch.from_numpy(0.5*rho_spectral[ci]*np.kron(np.eye(2),np.matmul(FF,np.eye(2*N)+np.matmul(np.linalg.pinv(np.eye(2*N)-FF),FF)))).to(mydevice)
 
     XX.share_memory_()
     XY.share_memory_()
@@ -164,8 +167,8 @@ def analysis_uvwdir_loop(skymodel,clusterfile,uvwfile,rhofile,solutionsfile,z_so
     pool.close()
     pool.join()
 
-    scalefactor=8*(N*(N-1)/2)*T 
     # scale by 8*(N*(N-1)/2)*T    
+    scalefactor=8*(N*(N-1)/2)*T 
 
     XX=XX*scalefactor
     XY=XY*scalefactor
@@ -185,14 +188,13 @@ if __name__ == '__main__':
   except RuntimeError:
     pass
 
-  # args skymodel clusterfile uvwfile rhofile solutionsfile z_solutions_file freq_low(MHz) freq_high(MHz) ra0 dec0 tslots alpha parallel_jobs
+  # args skymodel clusterfile uvwfile rhofile solutionsfile z_solutions_file freq_low(MHz) freq_high(MHz) ra0 dec0 tslots parallel_jobs
   import sys
   argc=len(sys.argv)
-  if argc==13:
-   analysis_uvwdir_loop(sys.argv[1],sys.argv[2],sys.argv[3],sys.argv[4],sys.argv[5],sys.argv[6],float(sys.argv[7]),float(sys.argv[8]),float(sys.argv[9]),float(sys.argv[10]),int(sys.argv[11]),float(sys.argv[12]))
-  elif argc==14:
-   analysis_uvwdir_loop(sys.argv[1],sys.argv[2],sys.argv[3],sys.argv[4],sys.argv[5],sys.argv[6],float(sys.argv[7]),float(sys.argv[8]),float(sys.argv[9]),float(sys.argv[10]),int(sys.argv[11]),float(sys.argv[12]),int(sys.argv[13]))
+  if argc==12:
+   analysis_uvwdir_loop(sys.argv[1],sys.argv[2],sys.argv[3],sys.argv[4],sys.argv[5],sys.argv[6],float(sys.argv[7]),float(sys.argv[8]),float(sys.argv[9]),float(sys.argv[10]),int(sys.argv[11]))
+  elif argc==13:
+   analysis_uvwdir_loop(sys.argv[1],sys.argv[2],sys.argv[3],sys.argv[4],sys.argv[5],sys.argv[6],float(sys.argv[7]),float(sys.argv[8]),float(sys.argv[9]),float(sys.argv[10]),int(sys.argv[11]),int(sys.argv[12]))
   else:
-   print("Usage: python %s skymodel clusterfile uvwfile rhofile solutionsfile z_solutions_file freq_low freq_high ra0 dec0 tslots alpha parallel_jobs"%(sys.argv[0]))
+   print("Usage: python %s skymodel clusterfile uvwfile rhofile solutionsfile z_solutions_file freq_low freq_high ra0 dec0 tslots parallel_jobs"%(sys.argv[0]))
   exit()
-

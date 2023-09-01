@@ -476,20 +476,24 @@ def skytocoherencies_uvw(skymodel,clusterfile,uu,vv,ww,N,freq,ra0,dec0):
   return K,C
 
 
-# return rho Kx1 vector
+# return 
+# rho_spetral Kx1 vector
+# rho_spatial Kx1 vector
 def read_rho(rhofile,K):
 # initialize rho from text file
   ci=0
-  rho=np.zeros(K,dtype=np.float32)
+  rho_spectral=np.zeros(K,dtype=np.float32)
+  rho_spatial=np.zeros(K,dtype=np.float32)
   with open(rhofile,'r') as fh:
     for curline in fh:
       if (not curline.startswith('#')) and len(curline)>1:
          curline1=curline.split()
-         # id hybrid rho
-         rho[ci]=float(curline1[2])
+         # id hybrid rho_spectral rho_spatial
+         rho_spectral[ci]=float(curline1[2])
+         rho_spatial[ci]=float(curline1[3])
          ci +=1
 
-  return rho
+  return rho_spectral,rho_spatial
 
 
 # return skymodel reading M components, M>2

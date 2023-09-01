@@ -3,8 +3,9 @@ import math
 from calibration_tools import *
 
 
-def simulate_models(N=62,ra0=0,dec0=math.pi/2,Ts=6):
+def simulate_models(K=4,N=62,ra0=0,dec0=math.pi/2,Ts=6):
    # for any observation, should change
+   # K: directions 
    # N: stations
    # phase center:ra0, dec0, 
    # solution time slots: Ts multiply with -t tslot option for full duration
@@ -28,7 +29,7 @@ def simulate_models(N=62,ra0=0,dec0=math.pi/2,Ts=6):
    # sources (directions) used in calibration, 
    # first one for center, 2,3,.. for outlier sources
    # and last one for weak sources (so minimum 2), 3 will be the weak sources
-   K=4 # must match what is used in cali_main.py
+   #K=4 # must match what is used in cali_main.py
    
    # enable spatial smoothness of systematic errors
    spatial_term=True # if True, enable spatial smoothness (planes in l,m for each term)
@@ -61,6 +62,7 @@ def simulate_models(N=62,ra0=0,dec0=math.pi/2,Ts=6):
    outcluster='cluster0.txt' # for simulation
    outcluster1='cluster.txt' # for calibration
    skycluster='skylmn.txt' # for input to DQN
+   # note: for input to DQN, average all sources in one cluster
    bbsskymodel='sky_bbs.txt' # input to DP3
    bbsparset_dem='test_demix.parset' # DP3 parset (demixing)
    bbsparset_dde='test_ddecal.parset' # DP3 parset (ddelcal)
@@ -188,6 +190,10 @@ def simulate_models(N=62,ra0=0,dec0=math.pi/2,Ts=6):
    bbsdem.write('demix.targetsource=\"'+centername+'\"\n')
    bbs.write(', ,'+centername+','+str(hh)+':'+str(mm)+':'+str(int(ss))+','
      +str(dd)+'.'+str(dmm)+'.'+str(int(dss))+'\n')
+   l_dqn=0
+   m_dqn=0
+   sI_dqn=0
+   sP_dqn=0
    for cj in range(Kc):
     ra,dec=lmtoradec(l[cj],m[cj],ra0,dec0)
     hh,mm,ss=radToRA(ra)
@@ -197,8 +203,11 @@ def simulate_models(N=62,ra0=0,dec0=math.pi/2,Ts=6):
     ff1.write(sname+' '+str(hh)+' '+str(mm)+' '+str(int(ss))+' '+str(dd)+' '+str(dmm)+' '+str(int(dss))+' '+str(sI[cj])+' 0 0 0 '+str(sP[cj])+' 0 0 0 0 0 0 '+str(f0)+'\n')
     gg.write(' '+sname)
     gg1.write(' '+sname)
-    # output for DQN : formate cluster_id, l, m, sI, sP
-    skl.write('1 '+str(l[cj])+' '+str(m[cj])+' '+str(sI[cj])+' '+str(sP[cj])+'\n')
+    # average l,m,sI,sP for DQN
+    l_dqn=l_dqn+l[cj]
+    m_dqn=m_dqn+m[cj]
+    sI_dqn=sI_dqn+sI[cj]
+    sP_dqn=sP_dqn+sP[cj]
     # BBS
     #, , CygA, 19:59:26, +40.44.00
     #CygA_4_2, POINT,    CygA, 19:59:30.433, +40.43.56.221, 4.827e+03, 0.0, 0.0, 0.0, 7.38000e+07, [-0.8], 7.63889e-03, 6.94444e-03, 1.00637e+02
@@ -206,6 +215,10 @@ def simulate_models(N=62,ra0=0,dec0=math.pi/2,Ts=6):
            +str(dd)+'.'+str(dmm)+'.'+str(int(dss))+','
            +str(sI[cj])+', 0, 0, 0,'+str(f0)+',['+str(sP[cj])+'], 0, 0, 0'+'\n')
    
+   # output for DQN : format cluster_id, l, m, sI, sP
+   skl.write('1 '+str(l_dqn/Kc)+' '+str(m_dqn/Kc)+' '+str(sI_dqn/Kc)+' '+str(sP_dqn/Kc)+'\n')
+   input_dir=1
+
    gg.write('\n')
    gg1.write('\n')
    
@@ -257,6 +270,11 @@ def simulate_models(N=62,ra0=0,dec0=math.pi/2,Ts=6):
    
     gg.write(str(cj+2)+' 1')
     gg1.write(str(cj+2)+' 1')
+    
+    l_dqn=0
+    m_dqn=0
+    sI_dqn=0
+    sP_dqn=0
     for ck in range(M2):
       sname2=sname+str(ck)
       ra2,dec2=lmtoradec(l2[ck],m2[ck],ra,dec)
@@ -266,13 +284,19 @@ def simulate_models(N=62,ra0=0,dec0=math.pi/2,Ts=6):
       ff.write(sname2+' '+str(hh)+' '+str(mm)+' '+str(int(ss))+' '+str(dd)+' '+str(dmm)+' '+str(int(dss))+' '+str(sI2[ck])+' 0 0 0 '+str(sP[cj])+' 0 0 0 0 0 0 '+str(f0)+'\n')
       # divide fluxes during calibration because of the beam
       ff1.write(sname2+' '+str(hh)+' '+str(mm)+' '+str(int(ss))+' '+str(dd)+' '+str(dmm)+' '+str(int(dss))+' '+str(sI2[ck]/100)+' 0 0 0 '+str(sP[cj])+' 0 0 0 0 0 0 '+str(f0)+'\n')
-      skl.write(str(cj+2)+' '+str(l2[ck])+' '+str(m2[ck])+' '+str(sI2[ck]/100)+' '+str(sP[cj])+'\n')
       bbs.write(sname+'_1,POINT,'+sname+','+str(hh)+':'+str(mm)+':'+str(int(ss))+','
            +str(dd)+'.'+str(dmm)+'.'+str(int(dss))+','
            +str(sI2[ck]/100)+', 0, 0, 0,'+str(f0)+',['+str(sP[cj])+'], 0, 0, 0'+'\n')
    
+      l_dqn=l_dqn+l2[ck]
+      m_dqn=m_dqn+m2[ck]
+      sI_dqn=sI_dqn+sI2[ck]/100
+      sP_dqn=sP_dqn+sP[cj]
       gg.write(' '+sname2)
       gg1.write(' '+sname2)
+
+    skl.write(str(cj+2)+' '+str(l_dqn/M2)+' '+str(m_dqn/M2)+' '+str(sI_dqn/M2)+' '+str(sP_dqn/M2)+'\n')
+    input_dir=input_dir+1
     gg.write('\n')
     gg1.write('\n')
     arh.write(str(cj+2)+' 1 '+str(sum(sI2)/1000*100)+' 0.1\n') # total apparent flux x 0.1, because outlier
@@ -421,7 +445,9 @@ def simulate_models(N=62,ra0=0,dec0=math.pi/2,Ts=6):
    for ci in range(Nf):
      flist[ci].close()
    
-   
+   # return M(clusters), freq_low(MHz),freq_high(MHz),ra0,dec0,time_slots  
+   return input_dir, f[0]/1e6, f[-1]/1e6, ra0, dec0, Ts  
+
 # main method: no arguments is default
 if __name__ == '__main__':
   # args 

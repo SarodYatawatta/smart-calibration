@@ -6,6 +6,7 @@ import torch
 import os
 
 from calibration_tools import *
+from simulate import simulate_models
 
 # (try to) use a GPU for computation?
 use_cuda=True
@@ -29,12 +30,14 @@ class CalibEnv(gym.Env):
   def __init__(self, K=2, M=5):
     super(CalibEnv, self).__init__()
     # Define action and observation space
-    # possible actions: vector Kx1, K: number of directions
+    # K: directions, possible actions: vector 2Kx1, 
+    # K: spectral regularization, K: spatial regularization
     self.K=K
-    # M= number of sky model components, cluster_id, l, m, sI, sP=5
+    # M= maximum number of clusters, averaged per-direction,
+    # for input to DQN, format each line: cluster_id, l, m, sI, sP=5
     self.M=M
-    # actions: 0,1,..,K-1 : action K
-    self.action_space = spaces.Box(low=np.zeros((self.K,1))*LOW,high=np.ones((self.K,1))*HIGH,dtype=np.float32)
+    # actions: 0:K: spectral, K:2K1: spatial
+    self.action_space = spaces.Box(low=np.zeros((2*self.K,1))*LOW,high=np.ones((2*self.K,1))*HIGH,dtype=np.float32)
     # observation (state space): rho, 2x1 real vector 0,..inf
     # rho: lower bound 0, upper bound 10k, one dimension for each direction
     self.observation_space = spaces.Dict({
@@ -42,11 +45,16 @@ class CalibEnv(gym.Env):
        'sky': spaces.Box(low=-HIGH,high=HIGH,shape=(self.M,5),dtype=np.float32)
        })
 
+    self.f_low=None
+    self.f_high=None
+    self.ra0=None
+    self.dec0=None
+    self.Ts=10 # must match -t option in calibration
+
     # shell script and command names
-    self.cmd_simul_input='python simulate.py' 
     self.cmd_simul_data='./dosimul.sh > simul.out'
     self.cmd_calib_data='./docal.sh > calib.out'
-    self.cmd_calc_influence='./doinfluence.sh > influence.out'
+    self.cmd_calc_influence='./doinfluence.sh '+str(self.f_low)+' '+str(self.f_high)+' '+str(self.ra0)+' '+str(self.dec0)+' '+str(self.Ts)+'> influence.out'
 
     # input/output file names
     # original data
@@ -66,52 +74,58 @@ class CalibEnv(gym.Env):
 
     # regularization factors for K directions, initialized to 1 here,
     # but will be re-initialized based on the simulation
-    self.rho=np.ones(self.K,dtype=np.float32)
+    self.rho_spectral=np.ones(self.K,dtype=np.float32)
+    self.rho_spatial=np.ones(self.K,dtype=np.float32)
     self.output_rho_()
     self.sky=None # sky model
 
   def initialize_rho_(self):
-    # initialize from text file
+    # initialize from text file, format
+    # id, hybrid, spectral_reg, spatial_reg
     ci=0
     with open(self.in_admm_rho,'r') as fh:
         for curline in fh:
           if (not curline.startswith('#')) and len(curline)>1:
              curline1=curline.split()
              # id hybrid rho
-             self.rho[ci]=float(curline1[2])
+             self.rho_spectral[ci]=float(curline1[2])
+             self.rho_spatial[ci]=float(curline1[3])
              ci +=1
 
   def output_rho_(self):
     # write rho to text file
     fh=open(self.out_admm_rho,'w+')
     fh.write('## format\n')
-    fh.write('## cluster_id hybrid admm_rho\n')
-    rho=self.rho.squeeze()
+    fh.write('## cluster_id hybrid admm_rho_spectral admm_rho_spatial\n')
+    rho_spectral=self.rho_spectral.squeeze()
+    rho_spatial=self.rho_spatial.squeeze()
     for ci in range(self.K):
-      fh.write(str(ci+1)+' '+str(1)+' '+str(rho[ci])+'\n')
+      fh.write(str(ci+1)+' '+str(1)+' '+str(rho_spectral[ci])+' '+str(rho_spatial[ci])+'\n')
     fh.close()
 
   def step(self, action):
     done=False # make sure to return True at some point
     # update state based on the action [-1,1] ->  rho = scale*(action)
-    self.rho =(action.squeeze())*(HIGH-LOW)/2+(HIGH+LOW)/2
+    rho=(action.squeeze())*(HIGH-LOW)/2+(HIGH+LOW)/2
+    self.rho_spectral =rho[0:self.K]
+    self.rho_spatial =rho[self.K:2*self.K]
     penalty=0
     # make sure rho stays within limits, if this happens, add a penalty
     for ci in range(self.K):
-      if self.rho[ci]<LOW:
-         self.rho[ci]=LOW
+      if self.rho_spectral[ci]<LOW:
+         self.rho_spectral[ci]=LOW
          penalty +=-0.1
-      if self.rho[ci]>HIGH:
-        self.rho[ci]=HIGH
+      if self.rho_spectral[ci]>HIGH:
+        self.rho_spectral[ci]=HIGH
         penalty +=-0.1
-      
+     
     # output rho
     self.output_rho_()
     # run calibration with current rho (observation)
     os.system(self.cmd_calib_data)
     # make influence map, find reward
+    self.cmd_calc_influence='./doinfluence.sh '+str(self.f_low)+' '+str(self.f_high)+' '+str(self.ra0)+' '+str(self.dec0)+' '+str(self.Ts)+'> influence.out'
     os.system(self.cmd_calc_influence)
-    # return new rho 
     # info : meta details {}
     hdul = fits.open('orig/influenceI.fits')
     data=hdul[0].data[0,:,:,:]
@@ -135,7 +149,14 @@ class CalibEnv(gym.Env):
 
   def reset(self):
     # run input simulations
-    os.system(self.cmd_simul_input) 
+    M,freq_low,freq_high,ra0,dec0,time_slots=simulate_models(K=self.K)
+    self.f_low=freq_low
+    self.f_high=freq_high
+    self.ra0=ra0
+    self.dec0=dec0
+    # make sure we have enough room to store sky model (and feed it to DQN)
+    assert(self.M>=M)
+
     # rho <- rho0
     self.initialize_rho_()
     # output rho
@@ -145,8 +166,8 @@ class CalibEnv(gym.Env):
     # run calibration with current rho (observation)
     os.system(self.cmd_calib_data)
     # make influence map, find reward
+    self.cmd_calc_influence='./doinfluence.sh '+str(self.f_low)+' '+str(self.f_high)+' '+str(self.ra0)+' '+str(self.dec0)+' '+str(self.Ts)+'> influence.out'
     os.system(self.cmd_calc_influence)
-    # return new rho 
     # info : meta details {}
     hdul = fits.open('orig/influenceI.fits')
     #hdul.info()
@@ -158,9 +179,16 @@ class CalibEnv(gym.Env):
 
   def render(self, mode='human'):
     print('%%%%%%%%%%%%%%%%%%%%%%')
-    print(self.rho.data)
+    print(self.rho_spectral.data)
+    print(self.rho_spatial.data)
     print('%%%%%%%%%%%%%%%%%%%%%%')
 
   def close (self):
     pass
 
+
+
+
+#env=CalibEnv(K=5,M=5) # use M>=K
+#obs=env.reset()
+#env.step(np.random.rand(5*2))
