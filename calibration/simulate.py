@@ -129,10 +129,10 @@ def simulate_models(K=4,N=62,ra0=0,dec0=math.pi/2,Ts=6):
    # output sources for centre cluster
    # format: P0 19 59 47.0 40 40 44.0 1.0 0 0 0 -1 0 0 0 0 0 0 1000000.0
    gg.write('1 1')
-   gg1.write('-1 1') # do not subtract, so -ve cluster id
+   gg1.write('1 1') # do not subtract, so -ve cluster id
    arh.write('# format\n')
    arh.write('# cluster_id hybrid spectral_admm_rho spatial_admm_rho\n')
-   arh.write('-1 1 '+str(sum(sI)*100)+' 0.1\n') # spectral=total flux x 100, spatial=0.1
+   arh.write('1 1 '+str(sum(sI)*100)+' 0.1\n') # spectral=total flux x 100, spatial=0.1
    
    # BBS sky model
    bbs.write('# (Name, Type, Patch, Ra, Dec, I, Q, U, V, ReferenceFrequency=\''+str(f0)+'\', SpectralIndex=\'[]\', MajorAxis, MinorAxis, Orientation) = format\n')
