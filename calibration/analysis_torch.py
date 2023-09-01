@@ -119,7 +119,6 @@ def analysis_uvwdir_loop(skymodel,clusterfile,uvwfile,rhofile,solutionsfile,z_so
 
     # check this agrees with solutions
     nx,ny=J[0].shape
-    print(f'tslots={tslots} Ts={Ts} nx={nx} ny={ny}')
     if nx<2*N*Ts:
      print('Error: solutions size does not match with data size')
      exit
