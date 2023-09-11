@@ -27,17 +27,18 @@ class CalibEnv(gym.Env):
   """Custom Environment that follows gym interface"""
   metadata = {'render.modes': ['human']}
 
-  def __init__(self, K=2, M=5):
+  def __init__(self, M=5):
     super(CalibEnv, self).__init__()
     # Define action and observation space
     # K: directions, possible actions: vector 2Kx1, 
     # K: spectral regularization, K: spatial regularization
-    self.K=K
-    # M= maximum number of clusters, averaged per-direction,
-    # for input to DQN, format each line: cluster_id, l, m, sI, sP=5
+    self.K=0 # will be set during reset()
+    # M= maximum number of clusters, we need K<=M always
     self.M=M
+    # sky model components, averaged per-direction,
+    # for input to DQN, format each line: cluster_id, l, m, sI, sP=5
     # actions: 0:K: spectral, K:2K1: spatial
-    self.action_space = spaces.Box(low=np.zeros((2*self.K,1))*LOW,high=np.ones((2*self.K,1))*HIGH,dtype=np.float32)
+    self.action_space = spaces.Box(low=np.zeros((2*self.M,1))*LOW,high=np.ones((2*self.M,1))*HIGH,dtype=np.float32)
     # observation (state space): rho, 2x1 real vector 0,..inf
     # rho: lower bound 0, upper bound 10k, one dimension for each direction
     self.observation_space = spaces.Dict({
@@ -74,8 +75,8 @@ class CalibEnv(gym.Env):
 
     # regularization factors for K directions, initialized to 1 here,
     # but will be re-initialized based on the simulation
-    self.rho_spectral=np.ones(self.K,dtype=np.float32)
-    self.rho_spatial=np.ones(self.K,dtype=np.float32)
+    self.rho_spectral=np.ones(self.M,dtype=np.float32)
+    self.rho_spatial=np.ones(self.M,dtype=np.float32)
     self.output_rho_()
     self.sky=None # sky model
 
@@ -105,10 +106,12 @@ class CalibEnv(gym.Env):
 
   def step(self, action):
     done=False # make sure to return True at some point
+    # check given action fits the K value
+    assert(len(action)==2*self.K)
     # update state based on the action [-1,1] ->  rho = scale*(action)
     rho=(action.squeeze())*(HIGH-LOW)/2+(HIGH+LOW)/2
-    self.rho_spectral =rho[0:self.K]
-    self.rho_spatial =rho[self.K:2*self.K]
+    self.rho_spectral[:self.K] =rho[0:self.K]
+    self.rho_spatial[:self.K] =rho[self.K:2*self.K]
     penalty=0
     # make sure rho stays within limits, if this happens, add a penalty
     for ci in range(self.K):
@@ -149,6 +152,10 @@ class CalibEnv(gym.Env):
 
   def reset(self):
     # run input simulations
+    # generate K, minimum 2, max M
+    self.K=np.random.choice(np.arange(2,self.M+1))
+    assert(self.K>1)
+    assert(self.K<=self.M)
     M,freq_low,freq_high,ra0,dec0,time_slots=simulate_models(K=self.K)
     self.f_low=freq_low
     self.f_high=freq_high
@@ -162,6 +169,7 @@ class CalibEnv(gym.Env):
     # output rho
     self.output_rho_()
     os.system(self.cmd_simul_data) 
+    # if K<M, extra locations will be 0
     self.sky=read_skycluster(self.in_sky_cluster,self.M)
     # run calibration with current rho (observation)
     os.system(self.cmd_calib_data)
@@ -189,6 +197,6 @@ class CalibEnv(gym.Env):
 
 
 
-#env=CalibEnv(K=5,M=5) # use M>=K
+#env=CalibEnv(M=5) # use M>=K
 #obs=env.reset()
-#env.step(np.random.rand(5*2))
+#env.step(np.random.rand(env.K*2))
