@@ -22,10 +22,11 @@ def init_layer(layer,sc=None):
   T.nn.init.uniform_(layer.bias.data, -sc, sc)
 
 class ReplayBuffer(object):
-    def __init__(self, max_size, input_shape, K, M, n_actions):
+    def __init__(self, max_size, input_shape, M, n_actions):
         self.mem_size = max_size
-        self.K=K # how many clusters
-        self.M=M # how many skymodel components (each 5 values) 
+        self.M=M # how many (maximum) clusters, also equal to
+        # how many skymodel components (each 5 values) 
+        # note: n_actions = 2 K (spectral and spatial)
         self.mem_cntr = 0
         self.state_memory_img = np.zeros((self.mem_size, *input_shape), dtype=np.float32)
         self.state_memory_sky= np.zeros((self.mem_size, self.M, 5), dtype=np.float32)
@@ -33,7 +34,7 @@ class ReplayBuffer(object):
         self.new_state_memory_sky = np.zeros((self.mem_size, self.M, 5), dtype=np.float32)
         self.action_memory = np.zeros((self.mem_size,n_actions), dtype=np.float32)
         self.reward_memory = np.zeros(self.mem_size, dtype=np.float32)
-        self.terminal_memory = np.zeros(self.mem_size, dtype=np.bool)
+        self.terminal_memory = np.zeros(self.mem_size, dtype=bool)
         self.filename='replaymem_sac.model' # for saving object
 
     def store_transition(self, state, action, reward, state_, done):
@@ -96,7 +97,7 @@ class CriticNetwork(nn.Module):
         self.conv3=nn.Conv2d(32,32,kernel_size=5,stride=2)
         self.bn3=nn.BatchNorm2d(32)
 
-        # network to pass K values (action) and 5xM values forward
+        # network to pass 2K values (n_actions) and 5xM values forward
         self.fc1=nn.Linear(n_actions+5*M,128)
         self.fc2=nn.Linear(128,16)
 
@@ -144,77 +145,6 @@ class CriticNetwork(nn.Module):
 
     def load_checkpoint(self):
         self.load_state_dict(T.load(self.checkpoint_file))
-
-# input: state output: value
-class ValueNetwork(nn.Module):
-    def __init__(self, lr, input_dims, n_actions, name, M):
-        super(ValueNetwork, self).__init__()
-        self.input_dims = input_dims
-        # width and height of image (note dim[0]=channels=1)
-        w=input_dims[1]
-        h=input_dims[2]
-        self.n_actions = n_actions
-        # input 1 chan: grayscale image
-        self.conv1=nn.Conv2d(1,16,kernel_size=5, stride=2)
-        self.bn1=nn.BatchNorm2d(16)
-        self.conv2=nn.Conv2d(16,32,kernel_size=5, stride=2)
-        self.bn2=nn.BatchNorm2d(32)
-        self.conv3=nn.Conv2d(32,32,kernel_size=5,stride=2)
-        self.bn3=nn.BatchNorm2d(32)
-
-        # network to pass  5xM values (sky) forward
-        self.fc11=nn.Linear(5*M,128)
-        self.fc12=nn.Linear(128,16)
-
-        # function to calculate output image size per single conv operation
-        def conv2d_size_out(size,kernel_size=5,stride=2):
-           return (size-(kernel_size-1)-1)//stride + 1
-
-        convw=conv2d_size_out(conv2d_size_out(conv2d_size_out(w)))
-        convh=conv2d_size_out(conv2d_size_out(conv2d_size_out(h)))
-
-        linear_input_size=convw*convh*32+16 # +16 from sky network
-        self.fc21=nn.Linear(linear_input_size,128)
-        self.fc22=nn.Linear(128,1)
-
-        init_layer(self.conv1)
-        init_layer(self.conv2)
-        init_layer(self.conv3)
-        init_layer(self.fc11)
-        init_layer(self.fc12)
-        init_layer(self.fc21)
-        init_layer(self.fc22,0.003) # last layer
-
-        self.optimizer = optim.Adam(self.parameters(), lr=lr)
-        #self.optimizer = LBFGSNew(self.parameters(), history_size=7, max_iter=4, line_search_fn=True,batch_mode=True)
-        self.device = mydevice
-        self.checkpoint_file = os.path.join('./', name+'_sac_value.model')
-
-        self.to(self.device)
-
-    def forward(self, x, z): # x is image, z: sky tensor
-        x=F.elu(self.bn1(self.conv1(x)))
-        x=F.elu(self.bn2(self.conv2(x)))
-        x=F.elu(self.bn3(self.conv3(x)))
-        x=T.flatten(x,start_dim=1)
-        z=T.flatten(z,start_dim=1) # sky
-        z=F.relu(self.fc11(z)) # sky
-        z=F.relu(self.fc12(z))
-        x=F.elu(self.fc21(T.cat((x,z),1)))
-        value=self.fc22(x) # 
-
-        return value
-
-    def save_checkpoint(self):
-        T.save(self.state_dict(), self.checkpoint_file)
-
-    def load_checkpoint(self):
-        self.load_state_dict(T.load(self.checkpoint_file))
-
-    def load_checkpoint_for_eval(self):
-        self.load_state_dict(T.load(self.checkpoint_file,map_location=T.device('cpu')))
-
-
 
 # input: state output: action
 class ActorNetwork(nn.Module):
@@ -299,7 +229,6 @@ class ActorNetwork(nn.Module):
         log_probs = probabilities.log_prob(actions)
         # mapping Gaussian to bounded distribution in (-1,1)
         log_probs -= T.log(1-action.pow(2)+self.reparam_noise)
-        #log_probs = log_probs.sum(1, keepdim=True)
         log_probs = log_probs.sum(1, keepdim=True)
 
         return action, log_probs
@@ -317,41 +246,40 @@ class ActorNetwork(nn.Module):
 
 class Agent():
     def __init__(self, gamma, lr_a, lr_c, input_dims, batch_size, n_actions,
-            max_mem_size=100, tau=0.001, K=2, M=3, reward_scale=2):
+            max_mem_size=100, tau=0.001, M=3, reward_scale=2):
         self.gamma = gamma
         self.tau=tau
         self.batch_size = batch_size
         self.n_actions=n_actions
+        # make sure we have enough space to accomodate actions
+        assert(2*M>=n_actions)
         # actions are always in [-1,1]
         self.max_action=1
 
-        self.replaymem=ReplayBuffer(max_mem_size, input_dims, K, M, n_actions)
+        self.replaymem=ReplayBuffer(max_mem_size, input_dims, M, n_actions)
     
         # online nets
         self.actor=ActorNetwork(lr_a, input_dims=input_dims, n_actions=n_actions, M=M,
                 max_action=self.max_action, name='a_eval')
         self.critic_1=CriticNetwork(lr_c, input_dims=input_dims, n_actions=n_actions, M=M, name='q_eval_1')
         self.critic_2=CriticNetwork(lr_c, input_dims=input_dims, n_actions=n_actions, M=M, name='q_eval_2')
-        self.value=ValueNetwork(lr_c, input_dims=input_dims, n_actions=n_actions, M=M, name='v_eval')
-        # target nets
-        self.target_value=ValueNetwork(lr_c, input_dims=input_dims, n_actions=n_actions, M=M, name='v_target')
+
+        self.target_critic_1=CriticNetwork(lr_c, input_dims=input_dims, n_actions=n_actions, M=M, name='q_target_1')
+        self.target_critic_2=CriticNetwork(lr_c, input_dims=input_dims, n_actions=n_actions, M=M, name='q_target_2')
 
         # reward scale ~ 1/alpha where alpha*entropy(pi(.|.)) is used for regularization of future reward
         self.scale= reward_scale
 
         # initialize targets (hard copy)
-        self.update_network_parameters(tau=1.)
+        self.update_network_parameters(self.target_critic_1, self.critic_1, tau=1.)
+        self.update_network_parameters(self.target_critic_2, self.critic_2, tau=1.)
 
-    def update_network_parameters(self, tau=None):
+    def update_network_parameters(self, target_model, origin_model, tau=None):
         if tau is None:
             tau = self.tau
 
-        v_dict = self.value.state_dict()
-        target_v_dict = self.target_value.state_dict()
-        for name in target_v_dict:
-            target_v_dict[name] = tau*v_dict[name].clone() + \
-                                      (1-tau)*target_v_dict[name].clone()
-        self.target_value.load_state_dict(target_v_dict)
+        for target_param, local_param in zip(target_model.parameters(), origin_model.parameters()):
+            target_param.data.copy_(tau* local_param.data + (1-tau) * target_param.data)
 
     def store_transition(self, state, action, reward, state_, terminal):
         self.replaymem.store_transition(state,action,reward,state_,terminal)
@@ -361,7 +289,9 @@ class Agent():
 
         state = T.tensor([observation['img']],dtype=T.float32).to(mydevice)
         state_sky = T.tensor([observation['sky']],dtype=T.float32).to(mydevice)
-        actions,_ = self.actor.forward(state,state_sky)
+        state = state[None,]
+        state_sky = state_sky[None,]
+        actions,_ = self.actor.sample_normal(state,state_sky,reparameterize=False)
 
         self.actor.train() # to enable batchnorm
 
@@ -372,7 +302,6 @@ class Agent():
         if self.replaymem.mem_cntr < self.batch_size:
             return
 
-        
         state, action, reward, new_state, done = \
                                 self.replaymem.sample_buffer(self.batch_size)
  
@@ -386,56 +315,43 @@ class Agent():
         reward_batch = T.tensor(reward).to(mydevice)
         terminal_batch = T.tensor(done).to(mydevice)
 
+        with T.no_grad():
+            new_actions, new_log_probs = self.actor.sample_normal(new_state_batch, new_state_batch_sky, reparameterize=False)
+            q1_new_policy = self.target_critic_1.forward(new_state_batch, new_state_batch_sky, new_actions)
+            q2_new_policy = self.target_critic_2.forward(new_state_batch, new_state_batch_sky, new_actions)
+            min_next_target=T.min(q1_new_policy,q2_new_policy)-self.alpha*new_log_probs
+            min_next_target[terminal_batch]=0.0
+            new_q_value=reward_batch+self.gamma*min_next_target
 
-        value = self.value(state_batch,state_batch_sky).view(-1)
-        value_ = self.target_value(new_state_batch,new_state_batch_sky).view(-1)
-        value_[terminal_batch] = 0.0
-
-        actions, log_probs = self.actor.sample_normal(state_batch,state_batch_sky, reparameterize=False)
-        log_probs = log_probs.view(-1)
-        q1_new_policy = self.critic_1.forward(state_batch,state_batch_sky, actions)
-        q2_new_policy = self.critic_2.forward(state_batch,state_batch_sky, actions)
-        critic_value = T.min(q1_new_policy, q2_new_policy)
-        critic_value = critic_value.view(-1)
-
-        self.value.optimizer.zero_grad()
-        value_target = critic_value - log_probs
-        value_loss = 0.5 * F.mse_loss(value, value_target)
-        value_loss.backward(retain_graph=True)
-        self.value.optimizer.step()
-
-        actions, log_probs = self.actor.sample_normal(state_batch, state_batch_sky, reparameterize=True)
-        log_probs = log_probs.view(-1)
-        q1_new_policy = self.critic_1.forward(state_batch, state_batch_sky, actions)
-        q2_new_policy = self.critic_2.forward(state_batch, state_batch_sky, actions)
-        critic_value = T.min(q1_new_policy, q2_new_policy)
-        critic_value = critic_value.view(-1)
-
-        actor_loss = log_probs - critic_value
-        actor_loss = T.mean(actor_loss)
-        self.actor.optimizer.zero_grad()
-        actor_loss.backward(retain_graph=True)
-        self.actor.optimizer.step()
-
+        q1_new_policy = self.critic_1.forward(state_batch, state_batch_sky, action_batch)
+        q2_new_policy = self.critic_2.forward(state_batch, state_batch_sky, action_batch)
+        critic_1_loss = F.mse_loss(q1_new_policy, new_q_value)
+        critic_2_loss = F.mse_loss(q2_new_policy, new_q_value)
+        critic_loss = critic_1_loss + critic_2_loss
         self.critic_1.optimizer.zero_grad()
         self.critic_2.optimizer.zero_grad()
-        q_hat = self.scale*reward_batch + self.gamma*value_
-        q1_old_policy = self.critic_1.forward(state_batch, state_batch_sky, action_batch).view(-1)
-        q2_old_policy = self.critic_2.forward(state_batch, state_batch_sky, action_batch).view(-1)
-        critic_1_loss = 0.5 * F.mse_loss(q1_old_policy, q_hat)
-        critic_2_loss = 0.5 * F.mse_loss(q2_old_policy, q_hat)
-
-        critic_loss = critic_1_loss + critic_2_loss
         critic_loss.backward()
         self.critic_1.optimizer.step()
         self.critic_2.optimizer.step()
 
-        self.update_network_parameters()
+        actions, log_probs = self.actor.sample_normal(state_batch, state_batch_sky, reparameterize=True)
+
+        q1_new_policy = self.critic_1.forward(state_batch, state_batch_sky, actions)
+        q2_new_policy = self.critic_2.forward(state_batch, state_batch_sky, actions)
+        critic_value = T.min(q1_new_policy, q2_new_policy)
+
+        actor_loss = (self.alpha*log_probs - critic_value).mean()
+
+        self.actor.optimizer.zero_grad()
+        actor_loss.backward()
+        self.actor.optimizer.step()
+
+        self.update_network_parameters(self.target_critic_1, self.critic_1)
+        self.update_network_parameters(self.target_critic_2, self.critic_2)
+
 
     def save_models(self):
         self.actor.save_checkpoint()
-        self.value.save_checkpoint()
-        self.target_value.save_checkpoint()
         self.critic_1.save_checkpoint()
         self.critic_2.save_checkpoint()
         self.replaymem.save_checkpoint()
@@ -443,31 +359,25 @@ class Agent():
 
     def load_models(self):
         self.actor.load_checkpoint()
-        self.value.load_checkpoint()
-        self.target_value.load_checkpoint()
         self.critic_1.load_checkpoint()
         self.critic_2.load_checkpoint()
         self.replaymem.load_checkpoint()
         self.actor.train()
-        self.value.train()
-        self.target_value.eval()
         self.critic_1.train()
         self.critic_2.train()
-        self.update_network_parameters(tau=1.)
+        self.update_network_parameters(self.target_critic_1, self.critic_1, tau=1.)
+        self.update_network_parameters(self.target_critic_2, self.critic_2, tau=1.)
 
     def load_models_for_eval(self):
         self.actor.load_checkpoint()
-        self.value.load_checkpoint()
         self.critic_1.load_checkpoint()
         self.critic_2.load_checkpoint()
         self.actor.eval()
-        self.value.eval()
         self.critic_1.eval()
         self.critic_2.eval()
 
     def print(self):
         print(self.actor)
-        print(self.value)
         print(self.critic_1)
 
 #a=Agent(gamma=0.99, batch_size=32, n_actions=2, M=4,

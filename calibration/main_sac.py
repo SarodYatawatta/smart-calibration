@@ -5,13 +5,14 @@ from calibenv import CalibEnv
 import pickle
 
 if __name__ == '__main__':
-    K=4 # directions: first is the target direction, the rest are outlier sources
-    M=4 # sky model (for calibration) components, M>K , when each direction has multiple sources
-    env = CalibEnv(K,M)
-    # number of actions K for the K directions
-    agent = Agent(gamma=0.99, batch_size=32, n_actions=K, tau=0.005, max_mem_size=1000,
-                  input_dims=[1,128,128], K=K, M=M, lr_a=1e-3, lr_c=1e-3, 
-                  reward_scale=K)
+    M=4 # maximum number of directions, one sky model component per direction
+    # the actual number of direction in each episode will be K, M>=K
+    # Note: K will be randomly generated from [2,M] in each episode
+    env = CalibEnv(M)
+    # number of actions = 2*K for the K directions (spectral and spatial)
+    agent = Agent(gamma=0.99, batch_size=32, n_actions=2*M, tau=0.005, max_mem_size=1000,
+                  input_dims=[1,128,128], M=M, lr_a=1e-3, lr_c=1e-3, 
+                  reward_scale=M)
     scores=[]
     n_games = 30
     
