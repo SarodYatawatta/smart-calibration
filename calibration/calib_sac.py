@@ -287,10 +287,10 @@ class Agent():
     def choose_action(self, observation):
         self.actor.eval() # to disable batchnorm
 
-        state = T.tensor([observation['img']],dtype=T.float32).to(mydevice)
-        state_sky = T.tensor([observation['sky']],dtype=T.float32).to(mydevice)
-        state = state[None,]
-        state_sky = state_sky[None,]
+        state = T.tensor(observation['img'].astype(np.float32),dtype=T.float32).to(mydevice)
+        state=state[None,]
+        state_sky = T.tensor(observation['sky'].astype(np.float32),dtype=T.float32).to(mydevice)
+        state_sky=state_sky[None,]
         actions,_ = self.actor.sample_normal(state,state_sky,reparameterize=False)
 
         self.actor.train() # to enable batchnorm

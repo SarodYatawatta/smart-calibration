@@ -111,7 +111,7 @@ class CalibEnv(gym.Env):
     # update state based on the action [-1,1] ->  rho = scale*(action)
     rho=(action.squeeze())*(HIGH-LOW)/2+(HIGH+LOW)/2
     self.rho_spectral[:self.K] =rho[0:self.K]
-    self.rho_spatial[:self.K] =rho[self.M/2:self.M/2+self.K]
+    self.rho_spatial[:self.K] =rho[self.M:self.M+self.K]
     penalty=0
     # make sure rho stays within limits, if this happens, add a penalty
     for ci in range(self.K):
@@ -199,4 +199,6 @@ class CalibEnv(gym.Env):
 
 #env=CalibEnv(M=5) # use M>=K
 #obs=env.reset()
+#print(obs['img'].shape)
+#print(obs['sky'].shape)
 #env.step(np.random.rand(env.M*2))
