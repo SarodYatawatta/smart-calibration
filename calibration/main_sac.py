@@ -16,6 +16,8 @@ if __name__ == '__main__':
     scores=[]
     n_games = 30
     
+    total_steps=0
+    warmup_steps=10 # warmup before using agent
     # load from disk DQN, replaymem
     #agent.load_models()
     #with open('scores.pkl','rb') as f:
@@ -26,8 +28,12 @@ if __name__ == '__main__':
         done = False
         observation = env.reset()
         loop=0
-        while (not done) and loop<2 :
-            action = agent.choose_action(observation)
+        while (not done) and loop<3 :
+            if total_steps < warmup_steps:
+                action=env.action_space.sample()
+                action=action.squeeze(-1)
+            else:
+                action = agent.choose_action(observation)
             observation_, reward, done, info = env.step(action)
             score += reward
             agent.store_transition(observation, action, reward, 
@@ -35,6 +41,7 @@ if __name__ == '__main__':
             agent.learn()
             observation = observation_
             loop+=1
+            total_steps+=1
         score=score/loop
         scores.append(score)
 

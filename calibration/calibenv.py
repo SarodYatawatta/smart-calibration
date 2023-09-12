@@ -19,7 +19,7 @@ else:
 #HIGH=10000.0
 # for starting off, use tighter bound
 LOW=0.01
-HIGH=100.
+HIGH=1000.
 
 EPS=0.01 # to make 1/(x+EPS) when x->0 not explode
 
@@ -37,8 +37,8 @@ class CalibEnv(gym.Env):
     self.M=M
     # sky model components, averaged per-direction,
     # for input to DQN, format each line: cluster_id, l, m, sI, sP=5
-    # actions: 0:K: spectral, K:2K1: spatial
-    self.action_space = spaces.Box(low=np.zeros((2*self.M,1))*LOW,high=np.ones((2*self.M,1))*HIGH,dtype=np.float32)
+    # actions: 0:K: spectral, K:2K1: spatial in [-1,1], step() will rescale later
+    self.action_space = spaces.Box(low=np.ones((2*self.M,1))*(-1.0),high=np.ones((2*self.M,1))*1.0,dtype=np.float32)
     # observation (state space): rho, 2x1 real vector 0,..inf
     # rho: lower bound 0, upper bound 10k, one dimension for each direction
     self.observation_space = spaces.Dict({
@@ -121,7 +121,13 @@ class CalibEnv(gym.Env):
       if self.rho_spectral[ci]>HIGH:
         self.rho_spectral[ci]=HIGH
         penalty +=-0.1
-     
+      if self.rho_spatial[ci]<LOW:
+         self.rho_spatial[ci]=LOW
+         penalty +=-0.1
+      if self.rho_spatial[ci]>HIGH:
+        self.rho_spatial[ci]=HIGH
+        penalty +=-0.1
+
     # output rho
     self.output_rho_()
     # run calibration with current rho (observation)
