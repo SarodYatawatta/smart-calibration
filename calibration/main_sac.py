@@ -12,12 +12,12 @@ if __name__ == '__main__':
     # number of actions = 2*K for the K directions (spectral and spatial)
     agent = Agent(gamma=0.99, batch_size=32, n_actions=2*M, tau=0.005, max_mem_size=1000,
                   input_dims=[1,128,128], M=M, lr_a=1e-3, lr_c=1e-3, 
-                  reward_scale=M)
+                  reward_scale=M, alpha=0.03)
     scores=[]
     n_games = 30
     
     total_steps=0
-    warmup_steps=10 # warmup before using agent
+    warmup_steps=100 # warmup before using agent
     # load from disk DQN, replaymem
     #agent.load_models()
     #with open('scores.pkl','rb') as f:

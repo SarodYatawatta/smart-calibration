@@ -246,7 +246,7 @@ class ActorNetwork(nn.Module):
 
 class Agent():
     def __init__(self, gamma, lr_a, lr_c, input_dims, batch_size, n_actions,
-            max_mem_size=100, tau=0.001, M=3, reward_scale=2):
+            max_mem_size=100, tau=0.001, M=3, reward_scale=2, alpha=0.1):
         self.gamma = gamma
         self.tau=tau
         self.batch_size = batch_size
@@ -267,6 +267,8 @@ class Agent():
         self.target_critic_1=CriticNetwork(lr_c, input_dims=input_dims, n_actions=n_actions, M=M, name='q_target_1')
         self.target_critic_2=CriticNetwork(lr_c, input_dims=input_dims, n_actions=n_actions, M=M, name='q_target_2')
 
+        # temperature
+        self.alpha=T.tensor(alpha,requires_grad=False,device=mydevice)
         # reward scale ~ 1/alpha where alpha*entropy(pi(.|.)) is used for regularization of future reward
         self.scale= reward_scale
 
@@ -312,8 +314,8 @@ class Agent():
         new_state_batch = T.tensor(new_state['img']).to(mydevice)
         new_state_batch_sky = T.tensor(new_state['sky']).to(mydevice)
         action_batch = T.tensor(action).to(mydevice)
-        reward_batch = T.tensor(reward).to(mydevice)
-        terminal_batch = T.tensor(done).to(mydevice)
+        reward_batch = T.tensor(reward).to(mydevice).unsqueeze(1)
+        terminal_batch = T.tensor(done).to(mydevice).unsqueeze(1)
 
         with T.no_grad():
             new_actions, new_log_probs = self.actor.sample_normal(new_state_batch, new_state_batch_sky, reparameterize=False)
