@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import math
+import casa_io
 
 def radectolm(ra,dec,ra0,dec0):
 # return source direction cosines [l,m,n] obtained for a source at spherical 
@@ -294,29 +295,17 @@ def skytocoherencies(skymodel,clusterfile,uvwfile,N,freq,ra0,dec0):
   return K,C
   
 # return K,C
-def skytocoherencies_torch(skymodel,clusterfile,uvwfile,N,freq,ra0,dec0,device):
+def skytocoherencies_torch(skymodel,clusterfile,MS,N,freq,ra0,dec0,device):
 # use skymodel,clusterfile and predict coherencies for uvwfile coordinates
 # C: K way tensor, each slice Tx4, T: total samples, 4: XX,XY(=0),YX(=0),YY
 # N : stations, ra0,dec0: phase center (rad), freq: frequency
   # light speed
   c=2.99792458e8
   
-  # uvw file
-  fh=open(uvwfile,'r')
-  fullset=fh.readlines()
-  fh.close()
+  # open MS and read u,v,w xx,xy,yx,yy
+  uu,vv,ww,_,_,_,_=casa_io.read_corr(MS,colname='MODEL_DATA')
   # total samples=baselines x timeslots
-  T=len(fullset)
-  uu=np.zeros(T,dtype=np.float32)
-  vv=np.zeros(T,dtype=np.float32)
-  ww=np.zeros(T,dtype=np.float32)
-  ci=0
-  for cl in fullset:
-   cl1=cl.split()
-   uu[ci]=float(cl1[0])
-   vv[ci]=float(cl1[1])
-   ww[ci]=float(cl1[2])
-   ci +=1
+  T=uu.shape[0]
 
   uu=torch.from_numpy(uu).to(device)
   vv=torch.from_numpy(vv).to(device)
@@ -324,7 +313,6 @@ def skytocoherencies_torch(skymodel,clusterfile,uvwfile,N,freq,ra0,dec0,device):
   uu *=2.0*math.pi/c*freq
   vv *=2.0*math.pi/c*freq
   ww *=2.0*math.pi/c*freq
-  del fullset
 
   fh=open(skymodel,'r')
   fullset=fh.readlines()

@@ -4,6 +4,7 @@ import numpy.matlib
 import torch
 from torch.multiprocessing import Pool,Process,set_start_method
 from calibration_tools import *
+import casa_io
 
 # (try to) use a GPU for computation?
 use_cuda=True
@@ -75,7 +76,7 @@ def process_chunk(ncal,XX,XY,YX,YY,Ct,J,Hadd,T,Ts,B,N,loop_in_r,fullpol):
         del R,H,dJ,dR,dR11
 
  
-def analysis_uvwdir_loop(skymodel,clusterfile,uvwfile,rhofile,solutionsfile,z_solfile,flow=110,fhigh=170,ra0=0,dec0=math.pi/2,tslots=10,Nparallel=4):
+def analysis_uvwdir_loop(skymodel,clusterfile,MS,rhofile,solutionsfile,z_solfile,flow=110,fhigh=170,ra0=0,dec0=math.pi/2,tslots=10,Nparallel=4):
     # ra0,dec0: phase center (rad)
     # tslots: -t option
     # Nparallel=number of parallel jobs to use
@@ -104,7 +105,7 @@ def analysis_uvwdir_loop(skymodel,clusterfile,uvwfile,rhofile,solutionsfile,z_so
     # read solutions file (also get the frequency(MHz)) J: Kx2N Nt x 2 (2Nx2 blocks Nt times)
     freq,J=readsolutions(solutionsfile)
     # read sky model Ct: Kx T x 4 (each row XX,XY,YX,YY)
-    K,Ct=skytocoherencies_torch(skymodel,clusterfile,uvwfile,N,freq,ra0,dec0,mydevice)
+    K,Ct=skytocoherencies_torch(skymodel,clusterfile,MS,N,freq,ra0,dec0,mydevice)
     assert(K==K1)
     
     # ADMM rho, per each direction, scale later
@@ -112,7 +113,7 @@ def analysis_uvwdir_loop(skymodel,clusterfile,uvwfile,rhofile,solutionsfile,z_so
     rho_spectral,rho_spatial=read_rho(rhofile,K)
 
     # read u,v,w,xx(re,im), xy(re,im) yx(re,im) yy(re,im)
-    XX,XY,YX,YY=readuvw(uvwfile)
+    _,_,_,XX,XY,YX,YY=casa_io.read_corr(MS,colname='MODEL_DATA')
     # how many timeslots to use per calibration (-t option)
     T=tslots
     Ts=int(XX.shape[0]//(B*T))
@@ -177,7 +178,7 @@ def analysis_uvwdir_loop(skymodel,clusterfile,uvwfile,rhofile,solutionsfile,z_so
     XY=XY.cpu().numpy()
     YX=YX.cpu().numpy()
     YY=YY.cpu().numpy()
-    writeuvw('fff',XX,XY,YX,YY)
+    casa_io.write_corr(MS,XX,XY,YX,YY,colname='CORRECTED_DATA')
 
 
 if __name__ == '__main__':
@@ -187,7 +188,7 @@ if __name__ == '__main__':
   except RuntimeError:
     pass
 
-  # args skymodel clusterfile uvwfile rhofile solutionsfile z_solutions_file freq_low(MHz) freq_high(MHz) ra0 dec0 tslots parallel_jobs
+  # args skymodel clusterfile MS rhofile solutionsfile z_solutions_file freq_low(MHz) freq_high(MHz) ra0 dec0 tslots parallel_jobs
   import sys
   argc=len(sys.argv)
   if argc==12:
@@ -195,5 +196,5 @@ if __name__ == '__main__':
   elif argc==13:
    analysis_uvwdir_loop(sys.argv[1],sys.argv[2],sys.argv[3],sys.argv[4],sys.argv[5],sys.argv[6],float(sys.argv[7]),float(sys.argv[8]),float(sys.argv[9]),float(sys.argv[10]),int(sys.argv[11]),int(sys.argv[12]))
   else:
-   print("Usage: python %s skymodel clusterfile uvwfile rhofile solutionsfile z_solutions_file freq_low freq_high ra0 dec0 tslots parallel_jobs"%(sys.argv[0]))
+   print("Usage: python %s skymodel clusterfile MS rhofile solutionsfile z_solutions_file freq_low freq_high ra0 dec0 tslots parallel_jobs"%(sys.argv[0]))
   exit()

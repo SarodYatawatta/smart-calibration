@@ -12,10 +12,10 @@ while [ $ci -le 4 ]; do # -le 8 for all freqs
  elif [ $ci -le 99 ]; then
   MS="L_SB"$ci".MS";
  fi
- python ./readcorr.py $MS smalluvw.txt;
+
  # extra arguments 1 to 5: freq_low(MHz) freq_high(MHz) ra0 dec0 time_slots
- python  ./analysis_torch.py ./sky.txt ./cluster.txt ./smalluvw.txt ./admm_rho.txt $MS.solutions ./zsol $1 $2 $3 $4 $5 1 # last parameter: number_of_parallel_jobs(=1 for GPU version)
- python ./writecorr.py $MS fff;
+ python  ./analysis_torch.py ./sky.txt ./cluster.txt $MS ./admm_rho.txt $MS.solutions ./zsol $1 $2 $3 $4 $5 1 # last parameter: number_of_parallel_jobs(=1 for GPU version)
+
  # -x 2 for fullpol
  /home/sarod/work/excon/src/MS/excon -x 0 -m $MS -c CORRECTED_DATA -d 128 -p 20
  let "ci = $ci + 1";
