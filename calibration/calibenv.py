@@ -27,7 +27,7 @@ class CalibEnv(gym.Env):
   """Custom Environment that follows gym interface"""
   metadata = {'render.modes': ['human']}
 
-  def __init__(self, M=5):
+  def __init__(self, M=5, provide_hint=False):
     super(CalibEnv, self).__init__()
     # Define action and observation space
     # K: directions, possible actions: vector 2Kx1, 
@@ -35,6 +35,9 @@ class CalibEnv(gym.Env):
     self.K=0 # will be set during reset()
     # M= maximum number of clusters, we need K<=M always
     self.M=M
+
+    self.provide_hint=provide_hint
+    self.hint=None
     # sky model components, averaged per-direction,
     # for input to DQN, format each line: cluster_id, l, m, sI, sP=5
     # actions: 0:K: spectral, K:2K1: spatial in [-1,1], step() will rescale later
@@ -154,7 +157,10 @@ class CalibEnv(gym.Env):
     # good calibration sigma0>sigma1, so reward > 1
     reward=sigma0/sigma1+1./(data.std()+EPS)+penalty
     info={}
-    return observation, reward, done, info
+    if self.provide_hint:
+      return observation, reward, done, self.hint, info
+    else:
+      return observation, reward, done, info
 
   def reset(self):
     # run input simulations
@@ -189,6 +195,14 @@ class CalibEnv(gym.Env):
     observation={
             'img': data,
             'sky': self.sky } 
+
+    # if provide_hint=True, also calculate and store hint
+    if self.provide_hint:
+      self.hint=np.zeros(2*self.M,dtype=np.float32)
+      self.hint[:self.K]=self.rho_spectral[:self.K]
+      # use 5% of spectral regularization as spatial
+      self.hint[self.M:self.M+self.K]=0.05*self.rho_spectral[:self.K]
+
     return observation  # reward, done, info can't be included
 
   def render(self, mode='human'):
@@ -201,9 +215,7 @@ class CalibEnv(gym.Env):
     pass
 
 
-
-
-#env=CalibEnv(M=5) # use M>=K
+#env=CalibEnv(M=5, provide_hint=True) # use M>=K
 #obs=env.reset()
 #print(obs['img'].shape)
 #print(obs['sky'].shape)

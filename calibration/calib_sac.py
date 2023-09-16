@@ -33,13 +33,15 @@ class ReplayBuffer(object):
         self.new_state_memory_img = np.zeros((self.mem_size, *input_shape), dtype=np.float32)
         self.new_state_memory_sky = np.zeros((self.mem_size, self.M, 5), dtype=np.float32)
         self.action_memory = np.zeros((self.mem_size,n_actions), dtype=np.float32)
+        self.hint_memory = np.zeros((self.mem_size,n_actions), dtype=np.float32)
         self.reward_memory = np.zeros(self.mem_size, dtype=np.float32)
         self.terminal_memory = np.zeros(self.mem_size, dtype=bool)
         self.filename='replaymem_sac.model' # for saving object
 
-    def store_transition(self, state, action, reward, state_, done):
+    def store_transition(self, state, action, reward, state_, done, hint):
         index = self.mem_cntr % self.mem_size
         self.action_memory[index] = action
+        self.hint_memory[index] = hint
         self.reward_memory[index] = reward
         self.terminal_memory[index] = done
         self.state_memory_img[index] = state['img']
@@ -60,8 +62,9 @@ class ReplayBuffer(object):
         states_ = {'img': self.new_state_memory_img[batch],
                   'sky': self.new_state_memory_sky[batch]}
         terminal = self.terminal_memory[batch]
+        hint = self.hint_memory[batch]
 
-        return states, actions, rewards, states_, terminal
+        return states, actions, rewards, states_, terminal, hint
 
     def save_checkpoint(self):
         with open(self.filename,'wb') as f:
@@ -79,6 +82,7 @@ class ReplayBuffer(object):
           self.action_memory=temp.action_memory
           self.reward_memory=temp.reward_memory
           self.terminal_memory=temp.terminal_memory
+          self.hint_memory=temp.hint_memory
 
 # input: state,action output: q-value
 class CriticNetwork(nn.Module):
@@ -246,7 +250,7 @@ class ActorNetwork(nn.Module):
 
 class Agent():
     def __init__(self, gamma, lr_a, lr_c, input_dims, batch_size, n_actions,
-            max_mem_size=100, tau=0.001, M=3, reward_scale=2, alpha=0.1):
+            max_mem_size=100, tau=0.001, M=3, reward_scale=2, alpha=0.1, hint_threshold=0.1, admm_rho=1.0, name_prefix='', use_hint=False):
         self.gamma = gamma
         self.tau=tau
         self.batch_size = batch_size
@@ -272,6 +276,14 @@ class Agent():
         # reward scale ~ 1/alpha where alpha*entropy(pi(.|.)) is used for regularization of future reward
         self.scale= reward_scale
 
+        self.use_hint=use_hint
+        self.learn_counter=0
+        if self.use_hint:
+           self.zero_tensor=T.tensor(0.).to(mydevice)
+           self.hint_threshold=hint_threshold
+           self.rho=T.tensor(0.0,requires_grad=False,device=mydevice)
+           self.admm_rho=admm_rho
+
         # initialize targets (hard copy)
         self.update_network_parameters(self.target_critic_1, self.critic_1, tau=1.)
         self.update_network_parameters(self.target_critic_2, self.critic_2, tau=1.)
@@ -283,8 +295,8 @@ class Agent():
         for target_param, local_param in zip(target_model.parameters(), origin_model.parameters()):
             target_param.data.copy_(tau* local_param.data + (1-tau) * target_param.data)
 
-    def store_transition(self, state, action, reward, state_, terminal):
-        self.replaymem.store_transition(state,action,reward,state_,terminal)
+    def store_transition(self, state, action, reward, state_, terminal, hint):
+        self.replaymem.store_transition(state,action,reward,state_,terminal, hint)
 
     def choose_action(self, observation):
         self.actor.eval() # to disable batchnorm
@@ -304,7 +316,7 @@ class Agent():
         if self.replaymem.mem_cntr < self.batch_size:
             return
 
-        state, action, reward, new_state, done = \
+        state, action, reward, new_state, done, hint = \
                                 self.replaymem.sample_buffer(self.batch_size)
  
         batch_index = np.arange(self.batch_size, dtype=np.int32)
@@ -316,6 +328,7 @@ class Agent():
         action_batch = T.tensor(action).to(mydevice)
         reward_batch = T.tensor(reward).to(mydevice).unsqueeze(1)
         terminal_batch = T.tensor(done).to(mydevice).unsqueeze(1)
+        hint_batch = T.tensor(hint).to(mydevice)
 
         with T.no_grad():
             new_actions, new_log_probs = self.actor.sample_normal(new_state_batch, new_state_batch_sky, reparameterize=False)
@@ -342,11 +355,36 @@ class Agent():
         q2_new_policy = self.critic_2.forward(state_batch, state_batch_sky, actions)
         critic_value = T.min(q1_new_policy, q2_new_policy)
 
-        actor_loss = (self.alpha*log_probs - critic_value).mean()
+        # local function to calculate KLD
+        def kld_loss(action,hint):
+            # map from [-1,1] to [0,1], add epsilon to avoid 0
+            action_m=0.5*action+0.5+self.actor.reparam_noise
+            hint_m=0.5*hint+0.5+self.actor.reparam_noise
+            # KLD : hint * log(hint/action) = hint * (log hint - log action)
+            return hint_m*(T.log(hint_m)-T.log(action_m))
 
-        self.actor.optimizer.zero_grad()
-        actor_loss.backward()
-        self.actor.optimizer.step()
+        if not self.use_hint:
+          actor_loss = (self.alpha*log_probs - critic_value).mean()
+
+          self.actor.optimizer.zero_grad()
+          actor_loss.backward()
+          self.actor.optimizer.step()
+        else:
+          gfun=(T.max(self.zero_tensor,((kld_loss(actions, hint_batch)-self.hint_threshold)).mean()).pow(2))
+          actor_loss = (self.alpha*log_probs - critic_value).mean()+0.5*self.admm_rho*gfun*gfun+self.rho*gfun
+          self.actor.optimizer.zero_grad()
+          actor_loss.backward()
+          self.actor.optimizer.step()
+          print(f'AC {actor_loss.data.item()} {gfun.data.item()}')
+
+        if self.learn_counter%10==0:
+           if self.use_hint:
+               with T.no_grad():
+                  gfun=(T.max(self.zero_tensor,((kld_loss(actions, hint_batch)-self.hint_threshold)).mean()).pow(2))
+                  self.rho+=self.admm_rho*gfun
+
+
+        self.learn_counter+=1
 
         self.update_network_parameters(self.target_critic_1, self.critic_1)
         self.update_network_parameters(self.target_critic_2, self.critic_2)
