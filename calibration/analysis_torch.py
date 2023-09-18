@@ -155,17 +155,22 @@ def analysis_uvwdir_loop(skymodel,clusterfile,MS,rhofile,solutionsfile,z_solfile
      else:
        Hadd[ci]=torch.from_numpy(0.5*rho_spectral[ci]*np.kron(np.eye(2),np.matmul(FF,np.eye(2*N)+np.matmul(np.linalg.pinv(np.eye(2*N)-FF),FF)))).to(mydevice)
 
-    XX.share_memory_()
-    XY.share_memory_()
-    YX.share_memory_()
-    YY.share_memory_()
 
-    # create pool
-    pool=Pool(processes=Nparallel)
-    argin=[(ci,XX,XY,YX,YY,Ct,J,Hadd,T,Ts,B,N,loop_in_r,fullpol) for ci in range(Ts)]
-    pool.starmap(process_chunk,argin)
-    pool.close()
-    pool.join()
+    # create pool if Nparallel>1
+    if Nparallel>1:
+      XX.share_memory_()
+      XY.share_memory_()
+      YX.share_memory_()
+      YY.share_memory_()
+
+      pool=Pool(processes=Nparallel)
+      argin=[(ci,XX,XY,YX,YY,Ct,J,Hadd,T,Ts,B,N,loop_in_r,fullpol) for ci in range(Ts)]
+      pool.starmap(process_chunk,argin)
+      pool.close()
+      pool.join()
+    else: # loop over Ts
+      for ci in range(Ts):
+         process_chunk(ci,XX,XY,YX,YY,Ct,J,Hadd,T,Ts,B,N,loop_in_r,fullpol)
 
     # scale by 8*(N*(N-1)/2)*T    
     scalefactor=8*(N*(N-1)/2)*T 

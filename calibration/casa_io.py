@@ -1,4 +1,4 @@
-from pyrap.tables import *
+from casacore.tables import *
 import string
 
 

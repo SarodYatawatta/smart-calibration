@@ -650,6 +650,7 @@ def Hessianres_torch(R,C,J,N,device):
   
   H=torch.zeros((K,4*N,4*N),dtype=torch.cfloat).to(device)
 
+  I=torch.eye(2).to(device)
   for k in range(K):
     ck=0 
     for cn in range(T):
@@ -662,10 +663,10 @@ def Hessianres_torch(R,C,J,N,device):
              H[k,4*q:4*(q+1),4*p:4*(p+1)] +=torch.conj(Imp.transpose(0,1))
              Res1=torch.matmul(Ci,torch.conj(J[k,2*q:2*(q+1),:].transpose(0,1)))
              Res=torch.matmul(Res1,torch.conj(Res1.transpose(0,1)))
-             H[k,4*p:4*(p+1),4*p:4*(p+1)] +=torch.kron(Res.transpose(0,1).contiguous(),torch.eye(2).to(device))
+             H[k,4*p:4*(p+1),4*p:4*(p+1)] +=torch.kron(Res.transpose(0,1).contiguous(),I)
              Res1=torch.matmul(J[k,2*p:2*(p+1),:],Ci)
              Res=torch.matmul(torch.conj(Res1.transpose(0,1)),Res1)
-             H[k,4*q:4*(q+1),4*q:4*(q+1)] +=torch.kron(Res.transpose(0,1).contiguous(),torch.eye(2).to(device))
+             H[k,4*q:4*(q+1),4*q:4*(q+1)] +=torch.kron(Res.transpose(0,1).contiguous(),I)
              ck+=1
              del Res,Res1,Imp,Ci
   return H/(B*T)
@@ -739,6 +740,8 @@ def Dsolutions_torch(C,J,N,Dgrad,r,device):
   rr[r]=1.
   dVpq=rr[0:8:2]+1j*rr[1:8:2]
 
+  I=torch.eye(2).to(device)
+  I_4N=EPS*(torch.eye(4*N).to(device))
   for k in range(K):
     # ck will fill each column
     ck=0
@@ -752,11 +755,11 @@ def Dsolutions_torch(C,J,N,Dgrad,r,device):
             # kron product will fill only rows 4*(p-1)+1:4*p
             Ci=C[k,ck,:].reshape((2,2)).transpose(0,1).contiguous()
             lhs=torch.matmul(J[k,2*q:2*(q+1),:],torch.conj(Ci.transpose(0,1).contiguous()))
-            fillvex=torch.matmul(torch.kron(lhs.transpose(0,1).contiguous(),torch.eye(2).to(device)),dVpq)
+            fillvex=torch.matmul(torch.kron(lhs.transpose(0,1).contiguous(),I),dVpq)
             AdV[4*p:4*(p+1),ck%B] +=fillvex
             ck +=1
     
-    dJ[k]=torch.linalg.solve(Dgrad[k]+EPS*torch.eye(4*N).to(device),AdV)
+    dJ[k]=torch.linalg.solve(Dgrad[k]+I_4N,AdV)
 
 
   return dJ
@@ -826,6 +829,9 @@ def Dsolutions_r_torch(C,J,N,Dgrad,device):
   dJ=torch.zeros((8,K,4*N,B),dtype=torch.cfloat).to(device)
 
   EPS=1e-12 # overcome singular matrix
+
+  I=torch.eye(2).to(device)
+  I_4N=EPS*(torch.eye(4*N).to(device))
   for k in range(K):
     # ck will fill each column
     ck=0
@@ -844,12 +850,12 @@ def Dsolutions_r_torch(C,J,N,Dgrad,device):
               rr=torch.zeros(8,dtype=torch.float32).to(device)
               rr[r]=1.
               dVpq=rr[0:8:2]+1j*rr[1:8:2]
-              fillvex=torch.matmul(torch.kron(lhs.transpose(0,1).contiguous(),torch.eye(2).to(device)),dVpq)
+              fillvex=torch.matmul(torch.kron(lhs.transpose(0,1).contiguous(),I),dVpq)
               AdV[r,4*p:4*(p+1),ck%B] +=fillvex
             ck +=1
     
     # iterate over r
-    dJ[0:8,k]=torch.linalg.solve(Dgrad[k]+EPS*torch.eye(4*N).to(device),AdV[0:8])
+    dJ[0:8,k]=torch.linalg.solve(Dgrad[k]+I_4N,AdV[0:8])
 
 
   return dJ
@@ -927,6 +933,8 @@ def Dresiduals_torch(C,J,N,dJ,addself,r,device):
   rr=torch.zeros(8,dtype=torch.float32).to(device)
   rr[r]=1.
   dVpq=rr[0:8:2]+1j*rr[1:8:2]
+
+  I=torch.eye(2).to(device)
   for k in range(K):
     # ck will fill each column
     ck=0
@@ -939,7 +947,7 @@ def Dresiduals_torch(C,J,N,dJ,addself,r,device):
             lhs=-torch.matmul(Ci,torch.conj(J[k,2*q:2*(q+1),:].transpose(0,1).contiguous())).transpose(0,1).contiguous()
             # kron product will fill only rows 4*(p-1)+1:4*p, column ck of dJ
             rhs=dJ[k,4*p:4*(p+1),:]
-            fillvex=torch.matmul(torch.kron(lhs,torch.eye(2).to(device)),rhs)
+            fillvex=torch.matmul(torch.kron(lhs,I),rhs)
             ck1=ck%B
             if addself:
               fillvex[:,ck1] +=dVpq
@@ -1067,6 +1075,7 @@ def Dresiduals_r_torch(C,J,N,dJ,addself,device):
   K=C.shape[0]
 
   dR=torch.zeros((8,4*B,B),dtype=torch.cfloat).to(device)
+  I=torch.eye(2).to(device)
   for k in range(K):
     # ck will fill each column
     ck=0
@@ -1081,7 +1090,7 @@ def Dresiduals_r_torch(C,J,N,dJ,addself,device):
             for r in range(8):
               rhs=dJ[r,k,4*p:4*(p+1),:]
 
-              fillvex=torch.matmul(torch.kron(lhs,torch.eye(2).to(device)),rhs)
+              fillvex=torch.matmul(torch.kron(lhs,I),rhs)
               ck1=ck%B
               if addself:
                 # setup 4x1 vector, one goes to depending on r
