@@ -12,7 +12,7 @@ if __name__ == '__main__':
     provide_hint=True
     env = CalibEnv(M,provide_hint=provide_hint)
     # number of actions = 2*K for the K directions (spectral and spatial)
-    agent = Agent(gamma=0.99, batch_size=32, n_actions=2*M, tau=0.005, max_mem_size=1000,
+    agent = Agent(gamma=0.99, batch_size=32, n_actions=2*M, tau=0.005, max_mem_size=10000,
                   input_dims=[1,128,128], M=M, lr_a=1e-3, lr_c=1e-3, 
                   reward_scale=M, alpha=0.03, 
                   hint_threshold=0.01, admm_rho=1.0, use_hint=provide_hint)
@@ -32,7 +32,7 @@ if __name__ == '__main__':
         done = False
         observation = env.reset()
         loop=0
-        while (not done) and loop<3 :
+        while (not done) and loop<4 :
             if total_steps < warmup_steps:
                 action=env.action_space.sample()
                 action=action.squeeze(-1)
