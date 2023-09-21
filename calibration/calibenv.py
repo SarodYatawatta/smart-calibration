@@ -159,7 +159,8 @@ class CalibEnv(gym.Env):
          'sky': self.sky*META_SCALE }
     # reward: residual error, normalized by data power
     # good calibration sigma0>sigma1, so reward > 1
-    reward=sigma0/sigma1+1./(data.std()+EPS)+penalty
+    # also a small fraction of 1/influence
+    reward=sigma0/sigma1+1e-4/(data.std()+EPS)+penalty
     info={}
     if self.provide_hint:
       return observation, reward, done, self.hint, info
