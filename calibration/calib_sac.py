@@ -15,6 +15,8 @@ if use_cuda and T.cuda.is_available():
 else:
   mydevice=T.device('cpu')
 
+EPS=1e-6
+
 # initialize all layer weights, based on the fan in
 def init_layer(layer,sc=None):
   sc = sc or 1./np.sqrt(layer.weight.data.size()[0])
@@ -24,14 +26,14 @@ def init_layer(layer,sc=None):
 class ReplayBuffer(object):
     def __init__(self, max_size, input_shape, M, n_actions):
         self.mem_size = max_size
-        self.M=M # how many (maximum) clusters, also equal to
-        # how many skymodel components (each 5 values) 
+        self.M=M # how many (maximum) clusters + 1, also equal to
+        # how many skymodel components (each 5 values), and one more row
         # note: n_actions = 2 K (spectral and spatial)
         self.mem_cntr = 0
         self.state_memory_img = np.zeros((self.mem_size, *input_shape), dtype=np.float32)
-        self.state_memory_sky= np.zeros((self.mem_size, self.M, 5), dtype=np.float32)
+        self.state_memory_sky= np.zeros((self.mem_size, self.M+1, 5), dtype=np.float32)
         self.new_state_memory_img = np.zeros((self.mem_size, *input_shape), dtype=np.float32)
-        self.new_state_memory_sky = np.zeros((self.mem_size, self.M, 5), dtype=np.float32)
+        self.new_state_memory_sky = np.zeros((self.mem_size, self.M+1, 5), dtype=np.float32)
         self.action_memory = np.zeros((self.mem_size,n_actions), dtype=np.float32)
         self.hint_memory = np.zeros((self.mem_size,n_actions), dtype=np.float32)
         self.reward_memory = np.zeros(self.mem_size, dtype=np.float32)
@@ -101,8 +103,8 @@ class CriticNetwork(nn.Module):
         self.conv3=nn.Conv2d(32,32,kernel_size=5,stride=2)
         self.bn3=nn.BatchNorm2d(32)
 
-        # network to pass 2K values (n_actions) and 5xM values forward
-        self.fc1=nn.Linear(n_actions+5*M,128)
+        # network to pass 2K values (n_actions) and 5x(M+1) values forward
+        self.fc1=nn.Linear(n_actions+5*(M+1),128)
         self.fc2=nn.Linear(128,16)
 
         # function to calculate output image size per single conv operation
@@ -156,7 +158,7 @@ class ActorNetwork(nn.Module):
         super(ActorNetwork, self).__init__()
         self.input_dims = input_dims
         self.max_action = max_action
-        self.reparam_noise=1e-6
+        self.reparam_noise=EPS
         # width and height of image (note dim[0]=channels=1)
         w=input_dims[1]
         h=input_dims[2]
@@ -169,8 +171,8 @@ class ActorNetwork(nn.Module):
         self.conv3=nn.Conv2d(32,32,kernel_size=5,stride=2)
         self.bn3=nn.BatchNorm2d(32)
 
-        # network to pass  5xM values (sky) forward
-        self.fc11=nn.Linear(5*M,128)
+        # network to pass  5x(M+1) values (sky) forward
+        self.fc11=nn.Linear(5*(M+1),128)
         self.fc12=nn.Linear(128,16)
 
         # function to calculate output image size per single conv operation
@@ -358,8 +360,8 @@ class Agent():
         # local function to calculate KLD
         def kld_loss(action,hint):
             # map from [-1,1] to [0,1], add epsilon to avoid 0
-            action_m=0.5*action+0.5+self.actor.reparam_noise
-            hint_m=0.5*hint+0.5+self.actor.reparam_noise
+            action_m=T.clamp(0.5*action+0.5+self.actor.reparam_noise,min=EPS,max=1.0)
+            hint_m=T.clamp(0.5*hint+0.5+self.actor.reparam_noise,min=EPS,max=1.0)
             # KLD : hint * log(hint/action) = hint * (log hint - log action)
             return hint_m*(T.log(hint_m)-T.log(action_m))
 

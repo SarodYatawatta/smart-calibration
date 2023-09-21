@@ -21,6 +21,10 @@ else:
 LOW=0.01
 HIGH=1000.
 
+# scaling of input data to prevent saturation
+INF_SCALE=1e-3
+META_SCALE=1e-5
+
 EPS=0.01 # to make 1/(x+EPS) when x->0 not explode
 
 class CalibEnv(gym.Env):
@@ -151,8 +155,8 @@ class CalibEnv(gym.Env):
     hdur.close()
     sigma1=res_data.std()
     observation={
-         'img': data,
-         'sky': self.sky }
+         'img': data*INF_SCALE,
+         'sky': self.sky*META_SCALE }
     # reward: residual error, normalized by data power
     # good calibration sigma0>sigma1, so reward > 1
     reward=sigma0/sigma1+1./(data.std()+EPS)+penalty
@@ -182,7 +186,12 @@ class CalibEnv(gym.Env):
     self.output_rho_()
     os.system(self.cmd_simul_data) 
     # if K<M, extra locations will be 0
-    self.sky=read_skycluster(self.in_sky_cluster,self.M)
+    # Mx5 values id, l, m, sI, sP
+    self.sky=np.zeros((self.M+1,5),dtype=np.float32)
+    self.sky[:self.M]=read_skycluster(self.in_sky_cluster,self.M)
+    # append 5 more values, ra0, dec0 (rad), K, f_low(GHz) f_high(GHz)
+    self.sky[-1]=[self.ra0,self.dec0,self.K,self.f_low/1000.,self.f_high/1000.]
+
     # run calibration with current rho (observation)
     os.system(self.cmd_calib_data)
     # make influence map, find reward
@@ -193,15 +202,16 @@ class CalibEnv(gym.Env):
     #hdul.info()
     data=hdul[0].data[0,:,:,:]#+np.random.randn(1,128,128)
     observation={
-            'img': data,
-            'sky': self.sky } 
+            'img': data*INF_SCALE,
+            'sky': self.sky*META_SCALE }
 
     # if provide_hint=True, also calculate and store hint
     if self.provide_hint:
       self.hint=np.zeros(2*self.M,dtype=np.float32)
-      self.hint[:self.K]=self.rho_spectral[:self.K]
+      # scale back to [-1,1]
+      self.hint[:self.K]=(self.rho_spectral[:self.K]-(HIGH+LOW)/2)*(2/(HIGH-LOW))
       # use 5% of spectral regularization as spatial
-      self.hint[self.M:self.M+self.K]=0.05*self.rho_spectral[:self.K]
+      self.hint[self.M:self.M+self.K]=(0.05*self.rho_spectral[:self.K]-(HIGH+LOW)/2)*(2/(HIGH-LOW))
 
     return observation  # reward, done, info can't be included
 

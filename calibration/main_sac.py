@@ -11,7 +11,8 @@ if __name__ == '__main__':
 
     provide_hint=True
     env = CalibEnv(M,provide_hint=provide_hint)
-    # number of actions = 2*K for the K directions (spectral and spatial)
+    # number of actions = 2*M for the M directions (spectral and spatial)
+    # but only K of these will be in use (K<=M)
     agent = Agent(gamma=0.99, batch_size=32, n_actions=2*M, tau=0.005, max_mem_size=10000,
                   input_dims=[1,128,128], M=M, lr_a=1e-3, lr_c=1e-3, 
                   reward_scale=M, alpha=0.03, 

@@ -159,6 +159,7 @@ def simulate_models(K=4,N=62,ra0=0,dec0=math.pi/2,Ts=6):
      +'ddecal.usebeammodel=true\n'
      +'ddecal.beamproximitylimit=0.1\n'
      +'#ddecal.parallelbaselines=true\n'
+     +'#ddecal.sagecalpredict=true\n'
      +'ddecal.mode=fulljones\n'
      +'#ddecal.solveralgorithm=directionsolve\n'
      +'ddecal.solveralgorithm=lbfgs\n'
