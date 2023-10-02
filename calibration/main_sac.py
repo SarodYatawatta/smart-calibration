@@ -18,14 +18,15 @@ if __name__ == '__main__':
                   reward_scale=M, alpha=0.03, 
                   hint_threshold=0.01, admm_rho=1.0, use_hint=provide_hint)
     scores=[]
-    n_games = 30
+    n_games = 50
     
+    reward_scale=10 # scale rewards > 1 by this factor, where final residual < initial, note this is unrelated to input to Agent
     total_steps=0
-    warmup_steps=100 # warmup before using agent
+    warmup_steps=0 # warmup before using agent
     # load from disk DQN, replaymem
-    #agent.load_models()
-    #with open('scores.pkl','rb') as f:
-    #    scores=pickle.load(f)
+    agent.load_models()
+    with open('scores.pkl','rb') as f:
+        scores=pickle.load(f)
 
 
     for i in range(n_games):
@@ -46,7 +47,8 @@ if __name__ == '__main__':
               observation_, reward, done, info = env.step(action)
               hint=np.zeros(2*M)
 
-            agent.store_transition(observation, action, reward, 
+            scaled_reward = reward * reward_scale if reward>1 else reward
+            agent.store_transition(observation, action, scaled_reward,
                                     observation_, done, hint)
             score += reward
             agent.learn()
