@@ -24,9 +24,9 @@ if __name__ == '__main__':
     total_steps=0
     warmup_steps=0 # warmup before using agent
     # load from disk DQN, replaymem
-    agent.load_models()
-    with open('scores.pkl','rb') as f:
-        scores=pickle.load(f)
+    #agent.load_models()
+    #with open('scores.pkl','rb') as f:
+    #    scores=pickle.load(f)
 
 
     for i in range(n_games):

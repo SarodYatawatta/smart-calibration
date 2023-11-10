@@ -31,9 +31,9 @@ class ReplayBuffer(object):
         # note: n_actions = 2 K (spectral and spatial)
         self.mem_cntr = 0
         self.state_memory_img = np.zeros((self.mem_size, *input_shape), dtype=np.float32)
-        self.state_memory_sky= np.zeros((self.mem_size, self.M+1, 5), dtype=np.float32)
+        self.state_memory_sky= np.zeros((self.mem_size, self.M+1, 5+2), dtype=np.float32)
         self.new_state_memory_img = np.zeros((self.mem_size, *input_shape), dtype=np.float32)
-        self.new_state_memory_sky = np.zeros((self.mem_size, self.M+1, 5), dtype=np.float32)
+        self.new_state_memory_sky = np.zeros((self.mem_size, self.M+1, 5+2), dtype=np.float32)
         self.action_memory = np.zeros((self.mem_size,n_actions), dtype=np.float32)
         self.hint_memory = np.zeros((self.mem_size,n_actions), dtype=np.float32)
         self.reward_memory = np.zeros(self.mem_size, dtype=np.float32)
@@ -104,7 +104,7 @@ class CriticNetwork(nn.Module):
         self.bn3=nn.BatchNorm2d(32)
 
         # network to pass 2K values (n_actions) and 5x(M+1) values forward
-        self.fc1=nn.Linear(n_actions+5*(M+1),128)
+        self.fc1=nn.Linear(n_actions+(5+2)*(M+1),128)
         self.fc2=nn.Linear(128,16)
 
         # function to calculate output image size per single conv operation
@@ -171,8 +171,8 @@ class ActorNetwork(nn.Module):
         self.conv3=nn.Conv2d(32,32,kernel_size=5,stride=2)
         self.bn3=nn.BatchNorm2d(32)
 
-        # network to pass  5x(M+1) values (sky) forward
-        self.fc11=nn.Linear(5*(M+1),128)
+        # network to pass  (5+2)x(M+1) values (sky) forward
+        self.fc11=nn.Linear((5+2)*(M+1),128)
         self.fc12=nn.Linear(128,16)
 
         # function to calculate output image size per single conv operation

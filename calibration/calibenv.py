@@ -23,7 +23,7 @@ HIGH=1000.
 
 # scaling of input data to prevent saturation
 INF_SCALE=1e-3
-META_SCALE=1e-5
+META_SCALE=1e-3
 
 EPS=0.01 # to make 1/(x+EPS) when x->0 not explode
 
@@ -48,9 +48,11 @@ class CalibEnv(gym.Env):
     self.action_space = spaces.Box(low=np.ones((2*self.M,1))*(-1.0),high=np.ones((2*self.M,1))*1.0,dtype=np.float32)
     # observation (state space): rho, 2x1 real vector 0,..inf
     # rho: lower bound 0, upper bound 10k, one dimension for each direction
+
+    # sky: (M+1)x5 values id, l, m, sI, sP, last 2 cols: spectral, spatial rho
     self.observation_space = spaces.Dict({
        'img': spaces.Box(low=-HIGH,high=HIGH,shape=(128,128),dtype=np.float32),
-       'sky': spaces.Box(low=-HIGH,high=HIGH,shape=(self.M,5),dtype=np.float32)
+       'sky': spaces.Box(low=-HIGH,high=HIGH,shape=(self.M+1,5+2),dtype=np.float32)
        })
 
     self.f_low=None
@@ -154,6 +156,11 @@ class CalibEnv(gym.Env):
     res_data=hdur[0].data[0,0,:,:]
     hdur.close()
     sigma1=res_data.std()
+
+    # update last two cols of sky
+    self.sky[:self.K,5]=(self.rho_spectral[:self.K]-(HIGH+LOW)/2)*(2/(HIGH-LOW))
+    self.sky[:self.K,6]=(self.rho_spatial[:self.K]-(HIGH+LOW)/2)*(2/(HIGH-LOW))
+
     observation={
          'img': data*INF_SCALE,
          'sky': self.sky*META_SCALE }
@@ -186,12 +193,15 @@ class CalibEnv(gym.Env):
     # output rho
     self.output_rho_()
     os.system(self.cmd_simul_data) 
-    # if K<M, extra locations will be 0
-    # Mx5 values id, l, m, sI, sP
-    self.sky=np.zeros((self.M+1,5),dtype=np.float32)
-    self.sky[:self.M]=read_skycluster(self.in_sky_cluster,self.M)
+    # if K<M, extra rows will all be 0
+    # Mx5 values id, l, m, sI, sP, last 2 cols: spectral, spatial rho
+    self.sky=np.zeros((self.M+1,5+2),dtype=np.float32)
+    self.sky[:self.M,:5]=read_skycluster(self.in_sky_cluster,self.M)
     # append 5 more values, ra0, dec0 (rad), K, f_low(GHz) f_high(GHz)
-    self.sky[-1]=[self.ra0,self.dec0,self.K,self.f_low/1000.,self.f_high/1000.]
+    self.sky[-1,:5]=[self.ra0,self.dec0,self.K,self.f_low/1000.,self.f_high/1000.]
+    # last two cols
+    self.sky[:self.K,5]=(self.rho_spectral[:self.K]-(HIGH+LOW)/2)*(2/(HIGH-LOW))
+    self.sky[:self.K,6]=(self.rho_spatial[:self.K]-(HIGH+LOW)/2)*(2/(HIGH-LOW))
 
     # run calibration with current rho (observation)
     os.system(self.cmd_calib_data)
@@ -229,5 +239,5 @@ class CalibEnv(gym.Env):
 #env=CalibEnv(M=5, provide_hint=True) # use M>=K
 #obs=env.reset()
 #print(obs['img'].shape)
-#print(obs['sky'].shape)
+#print(obs['sky'])
 #env.step(np.random.rand(env.M*2))
