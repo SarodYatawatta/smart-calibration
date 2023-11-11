@@ -334,7 +334,7 @@ def skytocoherencies_torch(skymodel,clusterfile,MS,N,freq,ra0,dec0,device):
      ci +=1
   K=ci
   # coherencies: K clusters, T rows, 4=XX,XY,YX,YY
-  C=torch.zeros((K,T,4),dtype=torch.cfloat).to(device)
+  C=torch.zeros((K,T,4),dtype=torch.cfloat,device=device)
 
   # output sky/cluster info for input to DQN
   # format of each line: cluster_id l m sI sP
@@ -648,7 +648,7 @@ def Hessianres_torch(R,C,J,N,device):
   T=R.shape[0]//(2*B)
   K=C.shape[0]
   
-  H=torch.zeros((K,4*N,4*N),dtype=torch.cfloat).to(device)
+  H=torch.zeros((K,4*N,4*N),dtype=torch.cfloat,device=device)
 
   I=torch.eye(2).to(device)
   for k in range(K):
@@ -732,11 +732,11 @@ def Dsolutions_torch(C,J,N,Dgrad,r,device):
   T=C.shape[1]//B
   K=C.shape[0]
 
-  dJ=torch.zeros((K,4*N,B),dtype=torch.cfloat).to(device)
+  dJ=torch.zeros((K,4*N,B),dtype=torch.cfloat,device=device)
 
   EPS=1e-12 # overcome singular matrix
   # setup 4x1 vector, one goes to depending on r
-  rr=torch.zeros(8,dtype=torch.float32).to(device)
+  rr=torch.zeros(8,dtype=torch.float32,device=device)
   rr[r]=1.
   dVpq=rr[0:8:2]+1j*rr[1:8:2]
 
@@ -746,7 +746,7 @@ def Dsolutions_torch(C,J,N,Dgrad,r,device):
     # ck will fill each column
     ck=0
     # setup 4N x B matrix (fixme: use a sparse matrix)
-    AdV=torch.zeros((4*N,B),dtype=torch.cfloat).to(device)
+    AdV=torch.zeros((4*N,B),dtype=torch.cfloat,device=device)
     for cn in range(T):
       for p in range(N-1):
          for q in range(p+1,N):
@@ -826,7 +826,7 @@ def Dsolutions_r_torch(C,J,N,Dgrad,device):
   T=C.shape[1]//B
   K=C.shape[0]
 
-  dJ=torch.zeros((8,K,4*N,B),dtype=torch.cfloat).to(device)
+  dJ=torch.zeros((8,K,4*N,B),dtype=torch.cfloat,device=device)
 
   EPS=1e-12 # overcome singular matrix
 
@@ -836,7 +836,7 @@ def Dsolutions_r_torch(C,J,N,Dgrad,device):
     # ck will fill each column
     ck=0
     # setup 4N x B matrix (fixme: use a sparse matrix)
-    AdV=torch.zeros((8,4*N,B),dtype=torch.cfloat).to(device)
+    AdV=torch.zeros((8,4*N,B),dtype=torch.cfloat,device=device)
     for cn in range(T):
       for p in range(N-1):
          for q in range(p+1,N):
@@ -847,7 +847,7 @@ def Dsolutions_r_torch(C,J,N,Dgrad,device):
             lhs=torch.matmul(J[k,2*q:2*(q+1),:],torch.conj(Ci.transpose(0,1)))
             for r in range(8):
               # setup 4x1 vector, one goes to depending on r
-              rr=torch.zeros(8,dtype=torch.float32).to(device)
+              rr=torch.zeros(8,dtype=torch.float32,device=device)
               rr[r]=1.
               dVpq=rr[0:8:2]+1j*rr[1:8:2]
               fillvex=torch.matmul(torch.kron(lhs.transpose(0,1).contiguous(),I),dVpq)
@@ -928,9 +928,9 @@ def Dresiduals_torch(C,J,N,dJ,addself,r,device):
   T=C.shape[1]//B
   K=C.shape[0]
 
-  dR=torch.zeros((4*B,B),dtype=torch.cfloat).to(device)
+  dR=torch.zeros((4*B,B),dtype=torch.cfloat,device=device)
   # setup 4x1 vector, one goes to depending on r
-  rr=torch.zeros(8,dtype=torch.float32).to(device)
+  rr=torch.zeros(8,dtype=torch.float32,device=device)
   rr[r]=1.
   dVpq=rr[0:8:2]+1j*rr[1:8:2]
 
@@ -1074,7 +1074,7 @@ def Dresiduals_r_torch(C,J,N,dJ,addself,device):
   T=C.shape[1]//B
   K=C.shape[0]
 
-  dR=torch.zeros((8,4*B,B),dtype=torch.cfloat).to(device)
+  dR=torch.zeros((8,4*B,B),dtype=torch.cfloat,device=device)
   I=torch.eye(2).to(device)
   for k in range(K):
     # ck will fill each column
@@ -1094,7 +1094,7 @@ def Dresiduals_r_torch(C,J,N,dJ,addself,device):
               ck1=ck%B
               if addself:
                 # setup 4x1 vector, one goes to depending on r
-                rr=torch.zeros(8,dtype=torch.float32).to(device)
+                rr=torch.zeros(8,dtype=torch.float32,device=device)
                 rr[r]=1.
                 dVpq=rr[0:8:2]+1j*rr[1:8:2]
                 fillvex[:,ck1] +=dVpq

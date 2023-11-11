@@ -16,7 +16,7 @@ else:
 def process_chunk(ncal,XX,XY,YX,YY,Ct,J,Hadd,T,Ts,B,N,loop_in_r,fullpol):
         ts=ncal*T
         print('%d %d %d'%(ts,Ts,ncal))
-        R=torch.zeros((2*B*T,2),dtype=torch.cfloat).to(mydevice)
+        R=torch.zeros((2*B*T,2),dtype=torch.cfloat,device=mydevice)
         R[0:2*B*T:2,0]=XX[ts*B:ts*B+B*T]
         R[0:2*B*T:2,1]=XY[ts*B:ts*B+B*T]
         R[1:2*B*T:2,0]=YX[ts*B:ts*B+B*T]
