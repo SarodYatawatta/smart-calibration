@@ -1226,6 +1226,28 @@ def readcluster(clusterfile):
 
   return Clus
 
+
+# create random shapelet model
+def generate_random_shapelet_model(filename,ra_hh,ra_mm,ra_ss,dec_deg,dec_mm,dec_ss):
+  fh=open(filename,'w+')
+  fh.write(str(ra_hh)+' '+str(ra_mm)+' '+str(ra_ss)+' '+str(dec_deg)+' '+str(dec_mm)+' '+str(dec_ss)+'\n')
+  # number of modes in [10,20]
+  n0=np.random.randint(10,20)
+  # scale in [0,1)*0.1+0.05
+  beta=np.random.random_sample(1)[0]+0.05
+  fh.write(str(n0)+' '+str(beta)+'\n')
+  # generate 2D array of n0xn0
+  coeff=np.random.randn(n0,n0)
+  # attenuate higher order coeffs
+  x=np.arange(1,n0+1)
+  weight=np.outer(x,x)
+  coeff=coeff/(weight**2)
+  coeff=coeff.flatten()
+  for ci in range(n0*n0):
+      fh.write(str(ci)+' '+str(coeff[ci])+'\n')
+  fh.close()
+
+
 #readsolutions('L_SB1.MS.solutions')
 #print(radectolm(1,0.2,0.4,0.3))
 #skytocoherencies('sky.txt','cluster.txt','smalluvw.txt',62,150e6,1,1.5)
@@ -1233,3 +1255,4 @@ def readcluster(clusterfile):
 #readuvw('smalluvw.txt')
 #Ns,freq,P,K,Z=read_global_solutions('zsol')
 #Ns,F,thetak,phik,Z=read_spatial_solutions('spatial_zsol')
+#generate_random_shapelet_model('test.modes',1,2,3,4,5,6)
