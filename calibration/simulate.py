@@ -37,7 +37,7 @@ def simulate_models(K=4,N=62,ra0=0,dec0=math.pi/2,Ts=6):
    # enable diffuse sky model (shapelet mode files SLSI.fits.modes  SLSQ.fits.modes  SLSU.fits.modes)
    diffuse_sky=True
    # enable this to randomly generate a diffuse sky model as well (instead of a fixed one)
-   random_diffuse=False
+   random_diffuse=True
    
    # MS name to use as filename base 'XX_SB001_MS.solutions'
    # broken to 2 parts
@@ -363,15 +363,15 @@ def simulate_models(K=4,N=62,ra0=0,dec0=math.pi/2,Ts=6):
        # if random diffuse, generate random models for Stokes I,Q,U
        sname='SLSIRandom'
        generate_random_shapelet_model(sname+'.fits.modes',hh,mm,ss,dd,mm,ss)
-       ff.write(sname+' '+str(hh)+' '+str(mm)+' '+str(int(ss))+' '+str(dd)+' '+str(dmm)+' '+str(int(dss))+' 25.0 0 0 0 -0.100000 0.000000 0.000000 0.0 1.0 1.0 0.0 '+str(f0)+'\n')
+       ff.write(sname+' '+str(hh)+' '+str(mm)+' '+str(int(ss))+' '+str(dd)+' '+str(dmm)+' '+str(int(dss))+' 250.0 0 0 0 -0.100000 0.000000 0.000000 0.0 1.0 1.0 0.0 '+str(f0)+'\n')
        gg.write(str(sname)+' ')
        sname='SLSQRandom'
        generate_random_shapelet_model(sname+'.fits.modes',hh,mm,ss,dd,mm,ss)
-       ff.write(sname+' '+str(hh)+' '+str(mm)+' '+str(int(ss))+' '+str(dd)+' '+str(dmm)+' '+str(int(dss))+' 0.0 25.0 0 0 -0.100000 0.000000 0.000000 0.0 1.0 1.0 0.0 '+str(f0)+'\n')
+       ff.write(sname+' '+str(hh)+' '+str(mm)+' '+str(int(ss))+' '+str(dd)+' '+str(dmm)+' '+str(int(dss))+' 0.0 250.0 0 0 -0.100000 0.000000 0.000000 0.0 1.0 1.0 0.0 '+str(f0)+'\n')
        gg.write(str(sname)+' ')
        sname='SLSURandom'
        generate_random_shapelet_model(sname+'.fits.modes',hh,mm,ss,dd,mm,ss)
-       ff.write(sname+' '+str(hh)+' '+str(mm)+' '+str(int(ss))+' '+str(dd)+' '+str(dmm)+' '+str(int(dss))+' 0.0 0.0 25.0 0 -0.100000 0.000000 0.000000 0.0 1.0 1.0 0.0 '+str(f0)+'\n')
+       ff.write(sname+' '+str(hh)+' '+str(mm)+' '+str(int(ss))+' '+str(dd)+' '+str(dmm)+' '+str(int(dss))+' 0.0 0.0 250.0 0 -0.100000 0.000000 0.000000 0.0 1.0 1.0 0.0 '+str(f0)+'\n')
        gg.write(str(sname)+' ')
    
    gg.write('\n')
