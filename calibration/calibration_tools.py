@@ -1227,8 +1227,9 @@ def readcluster(clusterfile):
   return Clus
 
 
-# create random shapelet model
-def generate_random_shapelet_model(filename,ra_hh,ra_mm,ra_ss,dec_deg,dec_mm,dec_ss):
+# create random shapelet model, save as 'filename'
+# if perturbed_filename given, also perturb the scale and coefficients by 10% and save as  'pertuebed_filename' (for calibration)
+def generate_random_shapelet_model(filename,ra_hh,ra_mm,ra_ss,dec_deg,dec_mm,dec_ss,perturbed_filename=None):
   fh=open(filename,'w+')
   fh.write(str(ra_hh)+' '+str(ra_mm)+' '+str(ra_ss)+' '+str(dec_deg)+' '+str(dec_mm)+' '+str(dec_ss)+'\n')
   # number of modes in [10,20]
@@ -1254,6 +1255,23 @@ def generate_random_shapelet_model(filename,ra_hh,ra_mm,ra_ss,dec_deg,dec_mm,dec
   fh.write('L '+str(1.0)+' '+str(1.0)+' '+str(math.pi/2)+'\n')
   fh.write('#model created by simulate.py')
   fh.close()
+
+  # if perturbed_filename is given
+  if perturbed_filename is not None:
+      beta_noise=0.1*beta*np.random.random_sample(1)[0]
+      coeff_noise=np.random.randn(n0,n0)
+      coeff_noise=coeff_noise/np.linalg.norm(coeff_noise)*0.1*np.linalg.norm(coeff)
+      beta_prime=beta+beta_noise
+      coeff_prime=coeff+coeff_noise.flatten()
+      fh=open(perturbed_filename,'w+')
+      fh.write(str(ra_hh)+' '+str(ra_mm)+' '+str(ra_ss)+' '+str(dec_deg)+' '+str(dec_mm)+' '+str(dec_ss)+'\n')
+      fh.write(str(n0)+' '+str(beta_prime)+'\n')
+      for ci in range(n0*n0):
+        fh.write(str(ci)+' '+str(coeff_prime[ci])+'\n')
+      fh.write('L '+str(1.0)+' '+str(1.0)+' '+str(math.pi/2)+'\n')
+      fh.write('#model created by simulate.py')
+      fh.close()
+
 
 
 #readsolutions('L_SB1.MS.solutions')

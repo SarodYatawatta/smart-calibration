@@ -362,15 +362,15 @@ def simulate_models(K=4,N=62,ra0=0,dec0=math.pi/2,Ts=6):
      else:
        # if random diffuse, generate random models for Stokes I,Q,U
        sname='SLSIRandom'
-       generate_random_shapelet_model(sname+'.fits.modes',hh,mm,ss,dd,mm,ss)
+       generate_random_shapelet_model(sname+'.fits.modes',hh,mm,ss,dd,mm,ss,sname+'_cal.fits.modes')
        ff.write(sname+' '+str(hh)+' '+str(mm)+' '+str(int(ss))+' '+str(dd)+' '+str(dmm)+' '+str(int(dss))+' 250.0 0 0 0 -0.100000 0.000000 0.000000 0.0 1.0 1.0 0.0 '+str(f0)+'\n')
        gg.write(str(sname)+' ')
        sname='SLSQRandom'
-       generate_random_shapelet_model(sname+'.fits.modes',hh,mm,ss,dd,mm,ss)
+       generate_random_shapelet_model(sname+'.fits.modes',hh,mm,ss,dd,mm,ss,sname+'_cal.fits.modes')
        ff.write(sname+' '+str(hh)+' '+str(mm)+' '+str(int(ss))+' '+str(dd)+' '+str(dmm)+' '+str(int(dss))+' 0.0 250.0 0 0 -0.100000 0.000000 0.000000 0.0 1.0 1.0 0.0 '+str(f0)+'\n')
        gg.write(str(sname)+' ')
        sname='SLSURandom'
-       generate_random_shapelet_model(sname+'.fits.modes',hh,mm,ss,dd,mm,ss)
+       generate_random_shapelet_model(sname+'.fits.modes',hh,mm,ss,dd,mm,ss,sname+'_cal.fits.modes')
        ff.write(sname+' '+str(hh)+' '+str(mm)+' '+str(int(ss))+' '+str(dd)+' '+str(dmm)+' '+str(int(dss))+' 0.0 0.0 250.0 0 -0.100000 0.000000 0.000000 0.0 1.0 1.0 0.0 '+str(f0)+'\n')
        gg.write(str(sname)+' ')
    
