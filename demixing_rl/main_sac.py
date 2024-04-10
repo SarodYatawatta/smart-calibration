@@ -19,6 +19,7 @@ if __name__ == '__main__':
     parser.add_argument('--load', action='store_true',default=False,
        help='load model')
     parser.add_argument('--iteration', default=1000, type=int, help='max episodes')
+    parser.add_argument('--warmup', default=30, type=int, help='warmup episodes')
 
 
     args=parser.parse_args()
@@ -40,7 +41,7 @@ if __name__ == '__main__':
     n_games = args.iteration
 
     total_steps=0
-    warmup_steps=10 # begining 1000
+    warmup_steps=args.warmup # during warmup, random actions are taken
     
     # load from disk networks, replaymem
     if args.load:
