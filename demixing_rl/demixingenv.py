@@ -1,5 +1,5 @@
-import gym
-from gym import spaces
+import gymnasium as gym
+from gymnasium import spaces
 import numpy as np
 import subprocess as sb
 import torch
@@ -20,9 +20,12 @@ if use_cuda and torch.cuda.is_available():
 else:
   mydevice=torch.device('cpu')
 
-# action range [0,1], select source if >0.5
+# action direction: range [0,1], select source if >0.5
 LOW=0.0
 HIGH=1.
+# action max ADMM iter: range [5,30] 
+LOW_iter=5
+HIGH_iter=30
 
 # scaling of input data to prevent saturation
 INF_SCALE=1e-3
@@ -43,12 +46,12 @@ class DemixingEnv(gym.Env):
   def __init__(self, K=2, Nf=3, Ninf=128, Npix=1024, Tdelta=10, provide_hint=False):
     super(DemixingEnv, self).__init__()
     # Define action and observation space
-    # action space dim=number of outlier clusters=vector (K-1)x1, K: number of directions
+    # action space dim=number of outlier clusters=vector (K-1)x1, K: number of directions + 1 for max ADMM iterations
     self.K=K
     self.Ninf=Ninf
     self.Npix=Npix
-    # actions: 0,1,..,K-2 : action (K-1)x1 each in [-1,1]
-    self.action_space = spaces.Box(low=np.ones((self.K-1,1))*(-1),high=np.ones((self.K-1,1))*(1),dtype=np.float32)
+    # actions: 0,1,..,K-1 : action (K-1+1)x1 each in [-1,1]
+    self.action_space = spaces.Box(low=np.ones((self.K,1))*(-1),high=np.ones((self.K,1))*(1),dtype=np.float32)
     # observation (state space): residual and influence maps
     # metadata: separation,azimuth,elevation (K values),frequency,n_stations
     self.observation_space = spaces.Dict({
@@ -97,9 +100,15 @@ class DemixingEnv(gym.Env):
     self.tau=100 # temperature, divide AIC by 1/tau before softmin()
 
   def step(self, action):
+    # action : Kx1, 0,1,..,K-2 : direction probabilities, 
+    # K-1: max ADMM iteration (scaled)
+    action_rho=action[0:self.K-1]
+    action_maxiter=action[self.K-1]
     done=False # make sure to return True at some point
     # update state based on the action [-1,1] ->  rho = scale*(action)
-    rho =action*(HIGH-LOW)/2+(HIGH+LOW)/2
+    rho =action_rho*(HIGH-LOW)/2+(HIGH+LOW)/2
+    # map [-1,1] to max iterations (integer)
+    self.maxiter =int(action_maxiter*(HIGH_iter-LOW_iter)/2+(HIGH_iter+LOW_iter)/2)
     # find indices of selected directions
     indices=np.where(rho.squeeze()>0.5)
     self.clus_id=np.unique(indices[0]).tolist()
@@ -115,7 +124,7 @@ class DemixingEnv(gym.Env):
     self.print_clusters_()
     self.output_rho_()
     # run calibration, use --oversubscribe if not enough slots are available
-    sb.run('mpirun -np 3 --oversubscribe '+generate_data.sagecal_mpi+' -f \'L_SB*.MS\'  -A 10 -P 2 -s sky.txt -c '+self.cluster+' -I DATA -O MODEL_DATA -p zsol -G '+self.out_admm_rho+' -n 4 -t '+str(self.Tdelta)+' > /dev/null',shell=True)
+    sb.run('mpirun -np 3 --oversubscribe '+generate_data.sagecal_mpi+' -f \'L_SB*.MS\'  -A '+str(self.maxiter)+' -P 2 -s sky.txt -c '+self.cluster+' -I DATA -O MODEL_DATA -p zsol -G '+self.out_admm_rho+' -n 4 -t '+str(self.Tdelta)+' > calibration.out',shell=True)
 
     # calculate influence (update the command)
     sb.run(self.cmd_calc_influence,shell=True)
@@ -165,8 +174,10 @@ class DemixingEnv(gym.Env):
     self.clus_id.append(self.K-1)
     self.print_clusters_()
     self.output_rho_()
+
+    self.maxiter=10 # need to be within [LOW_iter,HIGH_iter]
     # run calibration, use --oversubscribe if not enough slots are available
-    sb.run('mpirun -np 3 --oversubscribe '+generate_data.sagecal_mpi+' -f \'L_SB*.MS\'  -A 10 -P 2 -s sky.txt -c '+self.cluster+' -I DATA -O MODEL_DATA -p zsol -G '+self.out_admm_rho+' -n 4 -t '+str(self.Tdelta)+' > /dev/null',shell=True)
+    sb.run('mpirun -np 3 --oversubscribe '+generate_data.sagecal_mpi+' -f \'L_SB*.MS\'  -A '+str(self.maxiter)+' -P 2 -s sky.txt -c '+self.cluster+' -I DATA -O MODEL_DATA -p zsol -G '+self.out_admm_rho+' -n 4 -t '+str(self.Tdelta)+' > calibration.out',shell=True)
 
     # calculate influence (image at ./influenceI.fits)
     self.cmd_calc_influence='./doinfluence.sh '+str(self.freq_low)+' '+str(self.freq_high)+' '+str(self.ra0)+' '+str(self.dec0)+' '+str(self.Tdelta)+' > influence.out'
@@ -197,16 +208,23 @@ class DemixingEnv(gym.Env):
     self.hint=None
     return observation
 
+  # return the average std of data, by making images
+  def get_image_noise_(self,col='DATA'):
+    fits_std=np.zeros(self.Nf)
+    for ci in range(self.Nf):
+      MS='L_SB'+str(ci)+'.MS'
+      sb.run(generate_data.excon+' -m '+MS+' -p 20 -x 0 -c '+col+' -d '+str(self.Npix)+' > /dev/null',shell=True)
+      hdu=fits.open(MS+'_I.fits')
+      fitsdata=np.squeeze(hdu[0].data[0])
+      hdu.close()
+      fits_std[ci]=fitsdata.std()
+    return np.sqrt(np.mean(fits_std**2))
+
   # return the average std of data
   def get_noise_(self,col='DATA'):
     fits_std=np.zeros(self.Nf)
     for ci in range(self.Nf):
       MS='L_SB'+str(ci)+'.MS'
-      #sb.run(generate_data.excon+' -m '+MS+' -p 20 -x 0 -c '+col+' -d '+str(self.Npix)+' > /dev/null',shell=True)
-      #hdu=fits.open(MS+'_I.fits')
-      #fitsdata=np.squeeze(hdu[0].data[0])
-      #hdu.close()
-      #fits_std[ci]=fitsdata.std()
       fits_std[ci]=self.get_noise_var_(MS,col)
     return np.sqrt(np.mean(fits_std**2))
 
@@ -254,13 +272,13 @@ class DemixingEnv(gym.Env):
     # write rho to text file
     fh=open(self.out_admm_rho,'w+')
     fh.write('## format\n')
-    fh.write('## cluster_id hybrid admm_rho\n')
+    fh.write('## cluster_id hybrid admm_rho_spectral admm_rho_spatial\n')
     if clus_id:
       for ci in clus_id:
-        fh.write(str(self.rho_id[ci])+' '+str(1)+' '+str(self.rho[ci])+'\n')
+        fh.write(str(self.rho_id[ci])+' '+str(1)+' '+str(self.rho[ci])+' 1.0\n')
     else:
       for ci in self.clus_id:
-        fh.write(str(self.rho_id[ci])+' '+str(1)+' '+str(self.rho[ci])+'\n')
+        fh.write(str(self.rho_id[ci])+' '+str(1)+' '+str(self.rho[ci])+' 1.0\n')
     fh.close()
 
   @staticmethod
@@ -289,7 +307,7 @@ class DemixingEnv(gym.Env):
            Kselected=len(clus_id)
            self.print_clusters_(clus_id)
            self.output_rho_(clus_id)
-           sb.run('mpirun -np 3 --oversubscribe '+generate_data.sagecal_mpi+' -f \'L_SB*.MS\'  -A 10 -P 2 -s sky.txt -c '+self.cluster+' -I DATA -O MODEL_DATA -p zsol -G '+self.out_admm_rho+' -n 4 -t '+str(self.Tdelta)+' > /dev/null',shell=True)
+           sb.run('mpirun -np 3 --oversubscribe '+generate_data.sagecal_mpi+' -f \'L_SB*.MS\' -A '+str(self.maxiter)+' -P 2 -s sky.txt -c '+self.cluster+' -I DATA -O MODEL_DATA -p zsol -G '+self.out_admm_rho+' -n 4 -t '+str(self.Tdelta)+' > calibration.out',shell=True)
            # calculate noise
            std_residual=self.get_noise_(col='MODEL_DATA')
            AIC[index]=(self.N*std_residual/self.std_data)**2+Kselected*self.N
@@ -302,10 +320,15 @@ class DemixingEnv(gym.Env):
         hint+=probs[ci]*self.scalar_to_kvec(ci,self.K-1)
     # transform [0,1] back to [-1,1] space
     hint=(hint-(HIGH+LOW)/2)*(2/(HIGH-LOW))
-    return hint
+    # append max ADMM iterations
+    hint_full=np.zeros(self.K)
+    hint_full[0:self.K-1]=hint
+    hint_full[self.K-1]=(self.maxiter-(HIGH_iter+LOW_iter)/2)*(2/(HIGH_iter-LOW_iter))
+    return hint_full
 
   def calculate_reward_(self,Kselected):
     # reward ~ 1/(noise (variance) reduction) /(clusters calibrated)
+    # penalty ~ maxiter (negative reward)
     data_var=self.std_data*self.std_data
     noise_var=self.std_residual*self.std_residual
     # AIC = -log(likelihood) + 2 deg_of_freedom
@@ -317,7 +340,10 @@ class DemixingEnv(gym.Env):
     # normalize reward (mean/variance found by the initial ~3000 reward values)
     reward=(reward-(-859))/3559.0
 
-    return reward
+    # penalty: increased iterations result in increased penalty
+    penalty=-self.maxiter/100
+
+    return reward+penalty
 
   def render(self, mode='human'):
     print('%%%%%%%%%%%%%%%%%%%%%%')
@@ -336,25 +362,20 @@ class DemixingEnv(gym.Env):
 #obs=dem.reset()
 #hint=dem.get_hint()
 #sb.run('mv influenceI.fits inf0.fits',shell=True)
-#sb.run('mv MODEL_DATA.fits MODEL0.fits',shell=True)
-#action=np.zeros(5)
+#action=np.zeros(5+1)
+#action[-1]=0 # max iterations
 #action[0]=1
 #obs,reward,_,_=dem.step(action=action)
 #sb.run('mv influenceI.fits inf1.fits',shell=True)
-#sb.run('mv MODEL_DATA.fits MODEL1.fits',shell=True)
 #action[1]=1
 #obs,reward,_,_=dem.step(action=action)
 #sb.run('mv influenceI.fits inf2.fits',shell=True)
-#sb.run('mv MODEL_DATA.fits MODEL2.fits',shell=True)
 #action[2]=1
 #obs,reward,_,_=dem.step(action=action)
 #sb.run('mv influenceI.fits inf3.fits',shell=True)
-#sb.run('mv MODEL_DATA.fits MODEL3.fits',shell=True)
 #action[3]=1
 #obs,reward,_,_=dem.step(action=action)
 #sb.run('mv influenceI.fits inf4.fits',shell=True)
-#sb.run('mv MODEL_DATA.fits MODEL4.fits',shell=True)
 #action[4]=1
 #obs,reward,_,_=dem.step(action=action)
 #sb.run('mv influenceI.fits inf5.fits',shell=True)
-#sb.run('mv MODEL_DATA.fits MODEL5.fits',shell=True)
