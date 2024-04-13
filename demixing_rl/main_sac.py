@@ -74,7 +74,7 @@ if __name__ == '__main__':
               observation_, reward, done, info = env.step(action)
               scaled_reward = reward *10 if reward>0 else reward
               agent.store_transition(observation, action, scaled_reward,
-                                    observation_, done, np.zeros(K-1))
+                                    observation_, done, np.zeros(K-1+1))
 
             print(action)
             if provide_hint:
