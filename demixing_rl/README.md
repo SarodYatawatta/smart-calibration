@@ -8,3 +8,7 @@ This directory includes files to train a SAC agent to select the directions to c
   ```
 
 Run ``` evaluate_models.py ``` to evaluate trained models in terms of their performance.
+
+The following image shows the performance of the agent trained without and with hints, clearly the agent trained with hint shows increase in reward indicating learning.
+
+<img src="../figures/calibration_rewards.png" alt="Smoothed reward for agents trained without and with hint" width="700"/>
