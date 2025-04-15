@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import numpy as np
 from enetenv import ENetEnv
 # Uncomment which agent to use here TD3,SAC or DDPG
