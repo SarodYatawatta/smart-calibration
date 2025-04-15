@@ -12,6 +12,7 @@ from calibration_tools import *
 # also check if source is below horizon, negative separation
 # measure: casacore measure at core position at t0
 # returns: separations,azimuths,elevations: Kx1 (degrees)
+# K: total clusters, including target
 def calculate_separation(skymodel,clusterfile,ra0,dec0,measure):
   fh=open(skymodel,'r')
   fullset=fh.readlines()
@@ -64,6 +65,74 @@ def calculate_separation(skymodel,clusterfile,ra0,dec0,measure):
      ck+=1
 
   return separations,azimuths,elevations
+
+# return angle of separation of each clusrter in cluster file
+# separation from ra0,dec0
+# also check if source is below horizon, negative separation
+# measure: casacore measure at core position at t0
+# returns: separations,azimuths,elevations: Kx1 (degrees)
+# fluxes : Kx1 Jy
+# K: total clusters, including target
+def calculate_separation_and_flux(skymodel,clusterfile,ra0,dec0,measure):
+  fh=open(skymodel,'r')
+  fullset=fh.readlines()
+  fh.close()
+  S={}
+  for cl in fullset:
+   if (not cl.startswith('#')) and len(cl)>1:
+     cl1=cl.split()
+     S[cl1[0]]=cl1[1:]
+
+  fh=open(clusterfile,'r')
+  fullset=fh.readlines()
+  fh.close()
+
+  # determine number of clusters
+  ci=0
+  for cl in fullset:
+   if (not cl.startswith('#')) and len(cl)>1:
+     ci +=1
+  K=ci
+
+  ra0_q=quantity(ra0,'rad')
+  dec0_q=quantity(dec0,'rad')
+  target=measure.direction('j2000',ra0_q,dec0_q)
+
+  separations=np.zeros(K,dtype=np.float32)
+  azimuths=np.zeros(K,dtype=np.float32)
+  elevations=np.zeros(K,dtype=np.float32)
+  fluxes=np.zeros(K,dtype=np.float32)
+  ck=0
+  for cl in fullset:
+   if (not cl.startswith('#')) and len(cl)>1:
+     cl1=cl.split()
+     cs=0
+     sI=0
+     for sname in cl1[2:]: # consider all sources of each cluster
+       # 3:ra 3:dec sI 0 0 0 sP 0 0 0 0 0 0 freq0
+       sinfo=S[sname]
+       if cs==0:
+          mra=(float(sinfo[0])+float(sinfo[1])/60.+float(sinfo[2])/3600.)*360./24.*math.pi/180.0
+          mdec=(float(sinfo[3])+float(sinfo[4])/60.+float(sinfo[5])/3600.)*math.pi/180.0
+          mra_q=quantity(mra,'rad')
+          mdec_q=quantity(mdec,'rad')
+          if ck<K-1:
+            cluster_dir=measure.direction('j2000',mra_q,mdec_q)
+          else: # last cluster is target
+            cluster_dir=measure.direction('j2000',ra0_q,dec0_q)
+          separation=measure.separation(target,cluster_dir)
+          separations[ck]=separation.get_value()
+          # get elevation of this dir
+          azel=measure.measure(cluster_dir,'AZEL')
+          azimuths[ck]=azel['m0']['value']/math.pi*180
+          elevations[ck]=azel['m1']['value']/math.pi*180
+       sI+=float(sinfo[6])
+       cs+=1
+     fluxes[ck]=sI
+     ck+=1
+
+  return separations,azimuths,elevations,fluxes
+
 
 
 # calculate separation for given list of ATeam positions

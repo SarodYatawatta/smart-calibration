@@ -6,7 +6,7 @@ import casacore.tables as ctab
 from casacore.measures import measures
 from casacore.quanta import quantity
 from calibration_tools import *
-from influence_tools import analysis_uvw_perdir,calculate_separation,calculate_separation_vec,get_cluster_centers
+from influence_tools import analysis_uvw_perdir,calculate_separation,calculate_separation_vec,calculate_separation_and_flux,get_cluster_centers
 from astropy.io import fits
 import astropy.time as atime
 
@@ -34,6 +34,12 @@ LINC_GET_TARGET='/home/sarod/scratch/LINC/scripts/download_skymodel_target.py --
 X0='3826896.235129999928176m'
 Y0='460979.4546659999759868m'
 Z0='5064658.20299999974668m'
+
+# Frequency limits (MHz)
+LBA_LOW=15
+LBA_HIGH=70
+HBA_LOW=110
+HBA_HIGH=180
 
 # find a valid target direction
 # the strategy for sky model generation: sky_model_gen_strat
@@ -447,15 +453,15 @@ def generate_training_data(Ninf=128):
     for ci in range(Nf):
       MS='L_SB'+str(ci)+'.MS'
       if do_solutions:
-        sb.run(sagecal+' -d '+MS+' -s sky0.txt -c cluster0.txt -t '+str(Tdelta)+' -O DATA -a 1 -B 2 -E 1 -p '+MS+'.S.solutions',shell=True)
+        sb.run(sagecal+' -d '+MS+' -s sky0.txt -c cluster0.txt -t '+str(Tdelta)+' -O DATA -a 1 -B 2 -E 1 -p '+MS+'.S.solutions > simulation.out',shell=True)
       else:
-        sb.run(sagecal+' -d '+MS+' -s sky0.txt -c cluster0.txt -t '+str(Tdelta)+' -O DATA -a 1 -B 2 -E 1',shell=True)
+        sb.run(sagecal+' -d '+MS+' -s sky0.txt -c cluster0.txt -t '+str(Tdelta)+' -O DATA -a 1 -B 2 -E 1 > simulation.out',shell=True)
       sb.run('python addnoise.py '+MS+' '+str(SNR),shell=True)
       if do_images:
         sb.run(excon+' -m '+MS+' -p 8 -x 2 -c DATA -A /dev/shm/A -B /dev/shm/B -C /dev/shm/C -d 12000 > /dev/null',shell=True)
     
     # calibration, use --oversubscribe if not enough slots are available
-    sb.run('mpirun -np 3 --oversubscribe '+sagecal_mpi+' -f \'L_SB*.MS\'  -A 30 -P 2 -s sky.txt -c cluster.txt -I DATA -O MODEL_DATA -p zsol -G admm_rho.txt -n 4 -t '+str(Tdelta)+' -V',shell=True)
+    sb.run('mpirun -np 3 --oversubscribe '+sagecal_mpi+' -f \'L_SB*.MS\'  -A 30 -P 2 -s sky.txt -c cluster.txt -I DATA -O MODEL_DATA -p zsol -G admm_rho.txt -n 4 -t '+str(Tdelta)+' -V > simulation.out',shell=True)
     
     
     if do_images:
@@ -775,7 +781,7 @@ def get_info_from_dataset(mslist,timesec,Ninf=128):
     Ts=(Tslots+Tdelta-1)//Tdelta
 
     # calibration, use --oversubscribe if not enough slots are available
-    sb.run('mpirun -np 3 --oversubscribe '+sagecal_mpi+' -f \'L_SB*.MS\'  -A 30 -P 2 -s sky.txt -c cluster.txt -I DATA -O MODEL_DATA -p zsol -G admm_rho.txt -n 4 -t '+str(Tdelta)+' -V',shell=True)
+    sb.run('mpirun -np 3 --oversubscribe '+sagecal_mpi+' -f \'L_SB*.MS\'  -A 30 -P 2 -s sky.txt -c cluster.txt -I DATA -O MODEL_DATA -p zsol -G admm_rho.txt -n 4 -t '+str(Tdelta)+' -V > calibration.out',shell=True)
  
     #########################################################################
     # Get the ra,dec coords of each cluster for imaging
@@ -886,6 +892,7 @@ def add_column(msname,colname):
 #  freq_low, freq_high (Hz): lowest/highest freq, 
 # ra0, dec0: phase center (rad)
 # N: number of stations
+# fluxes (Kx1) : total fluxes, without considering spectra,
 def simulate_data(Nf=3,Tdelta=10,do_images=False):
     # K: directions for demixing + target
     K=6 # total must match = (A-team clusters + 1)
@@ -978,11 +985,11 @@ def simulate_data(Nf=3,Tdelta=10,do_images=False):
     sb.run('rm -rf L_SB*.MS L_SB*fits',shell=True)
     # frequencies
     if hba:
-        flow=110+np.random.rand()*(180-110)/2
-        fhigh=110+(180-110)/2+np.random.rand()*(180-110)/2
+        flow=HBA_LOW+np.random.rand()*(HBA_HIGH-HBA_LOW)/2
+        fhigh=HBA_LOW+(HBA_HIGH-HBA_LOW)/2+np.random.rand()*(HBA_HIGH-HBA_LOW)/2
     else:
-        flow=30+np.random.rand()*(70-30)/2
-        fhigh=30+(70-30)/2+np.random.rand()*(70-30)/2
+        flow=LBA_LOW+np.random.rand()*(LBA_HIGH-LBA_LOW)/2
+        fhigh=LBA_LOW+(LBA_HIGH-LBA_LOW)/2+np.random.rand()*(LBA_HIGH-LBA_LOW)/2
     freqlist=np.linspace(flow,fhigh,num=Nf)*1e6
 
     f0=np.mean(freqlist)
@@ -1138,7 +1145,7 @@ def simulate_data(Nf=3,Tdelta=10,do_images=False):
     mytime=mydm.epoch('UTC',str(t0)+'s')
     mydm.doframe(mytime)
     mydm.doframe(mypos)
-    separation,azimuth,elevation=calculate_separation(outskymodel1,outcluster1,ra0,dec0,mydm)
+    separation,azimuth,elevation,fluxes=calculate_separation_and_flux(outskymodel1,outcluster1,ra0,dec0,mydm)
     #########################################################################
     # simulate errors for K directions, attenuate those errors
     # target = column K-1
@@ -1216,9 +1223,9 @@ def simulate_data(Nf=3,Tdelta=10,do_images=False):
     for ci in range(Nf):
       MS='L_SB'+str(ci)+'.MS'
       if do_solutions:
-        sb.run(sagecal+' -d '+MS+' -s sky0.txt -c cluster0.txt -t '+str(Tdelta)+' -O DATA -a 1 -B 2 -E 1 -p '+MS+'.S.solutions',shell=True)
+        sb.run(sagecal+' -d '+MS+' -s sky0.txt -c cluster0.txt -t '+str(Tdelta)+' -O DATA -a 1 -B 2 -E 1 -p '+MS+'.S.solutions > simulation.out',shell=True)
       else:
-        sb.run(sagecal+' -d '+MS+' -s sky0.txt -c cluster0.txt -t '+str(Tdelta)+' -O DATA -a 1 -B 2 -E 1',shell=True)
+        sb.run(sagecal+' -d '+MS+' -s sky0.txt -c cluster0.txt -t '+str(Tdelta)+' -O DATA -a 1 -B 2 -E 1 > simulation.out',shell=True)
       sb.run('python addnoise.py '+MS+' '+str(SNR),shell=True)
       if do_images:
         sb.run(excon+' -m '+MS+' -p 30 -x 2 -c DATA -d 13000 > /dev/null',shell=True)
@@ -1227,4 +1234,4 @@ def simulate_data(Nf=3,Tdelta=10,do_images=False):
     if do_images:
       sb.run('bash ./calmean.sh \'L_SB*.MS_I*fits\' 1 && python calmean_.py && mv bar.fits data.fits',shell=True)
 
-    return separation,azimuth,elevation,freqlist[0],freqlist[Nf-1],ra0,dec0,N
+    return separation,azimuth,elevation,freqlist[0],freqlist[Nf-1],ra0,dec0,N,fluxes
