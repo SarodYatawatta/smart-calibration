@@ -8,4 +8,12 @@ How to run the script
 
 Using different random *--seed*, we can train an ensemble of models. The trained ensemble model can be used to determine the final parameters to use for the fuzzy controller.
 
+
+## Requirements
+Executables:
+sagecal,makems,excon
+
+Python:
+pytorch, numpy, scipy, python-casacore, gymnasium, scikit-fuzzy
+
 di 15 apr 2025 10:41:48 CEST
