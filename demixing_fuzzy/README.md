@@ -10,6 +10,9 @@ Using different random *--seed*, we can train an ensemble of models. The trained
 
 
 ## Requirements
+Hardware:
+A GPU is recommended
+
 Executables:
 sagecal,makems,excon
 
