@@ -60,7 +60,7 @@ if __name__ == '__main__':
         score = 0
         done = False
 
-        # observation: influence/residual sep,az,el,freq
+        # observation: influence/residual sep,az,el,flux,freq,stations
         observation = env.reset()
         loop=0
         while (not done) and loop<7:
@@ -81,9 +81,6 @@ if __name__ == '__main__':
               agent.store_transition(observation, action, scaled_reward,
                                     observation_, done, np.zeros(n_fuzzy))
 
-            print(action)
-            if provide_hint:
-              print(hint)
             score += reward
             agent.learn()
             observation = observation_
