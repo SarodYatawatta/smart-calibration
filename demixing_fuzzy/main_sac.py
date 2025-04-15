@@ -17,7 +17,7 @@ if __name__ == '__main__':
     )
     parser.add_argument('--seed',default=0,type=int,metavar='s',
        help='random seed to use')
-    parser.add_argument('--use_hint', action='store_true',default=False,
+    parser.add_argument('--use_hint', action='store_true',default=True,
        help='use hint or not')
     parser.add_argument('--load', action='store_true',default=False,
        help='load model')
