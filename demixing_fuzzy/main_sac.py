@@ -22,8 +22,9 @@ if __name__ == '__main__':
     parser.add_argument('--load', action='store_true',default=False,
        help='load model')
     parser.add_argument('--iteration', default=1000, type=int, help='max episodes')
+    parser.add_argument('--steps', default=10, type=int, help='steps for each episode')
     parser.add_argument('--warmup', default=30, type=int, help='warmup episodes')
-
+    parser.add_argument('--memory', default=30000, type=int, help='replay memory size')
 
     args=parser.parse_args()
     np.random.seed(args.seed)
@@ -40,7 +41,7 @@ if __name__ == '__main__':
     # number of variables for the fuzzy controller config
     n_fuzzy=20
     # number of actions = n_fuzzy
-    agent = DemixingAgent(gamma=0.99, batch_size=256, n_actions=n_fuzzy, tau=0.005, max_mem_size=16000,
+    agent = DemixingAgent(gamma=0.99, batch_size=256, n_actions=n_fuzzy, tau=0.005, max_mem_size=args.memory,
                   input_dims=[1,Ninf,Ninf], n_meta=n_meta, lr_a=3e-4, lr_c=1e-3, alpha=0.03, hint_threshold=0.01, admm_rho=1.0, use_hint=provide_hint)
     scores=[]
     n_games = args.iteration
@@ -63,7 +64,7 @@ if __name__ == '__main__':
         # observation: influence/residual sep,az,el,flux,freq,stations
         observation = env.reset()
         loop=0
-        while (not done) and loop<7:
+        while (not done) and loop<args.steps:
             if total_steps<warmup_steps:
               action = env.action_space.sample()
               action = action.squeeze(-1)
