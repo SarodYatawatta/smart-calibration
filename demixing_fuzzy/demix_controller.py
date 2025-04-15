@@ -54,17 +54,18 @@ class DemixController:
         n_var +=4
 
         input_limits=dict()
-        input_limits['elevation']=elevation
-        input_limits['separation']=separation
-        input_limits['log_intensity']=logI
-        input_limits['intensity_ratio']=ratI
+        input_limits['_elevation']=elevation
+        input_limits['_separation']=separation
+        input_limits['_log_intensity']=logI
+        input_limits['_intensity_ratio']=ratI
 
         output_limits=dict()
-        output_limits['priority']=priority
+        output_limits['_priority']=priority
 
         membership_limits=dict()
         membership_limits['inputs']=input_limits
         membership_limits['outputs']=output_limits
+        membership_limits['_comment']="This file defines the input/output limits, ranges etc. used by tune_demixing_parameters.py. This is automatically generated."
 
         return membership_limits,n_var
 
@@ -108,11 +109,11 @@ class DemixController:
         inputs=self.config['inputs']
         outputs=self.config['outputs']
 
-        self.update_set_(inputs['elevation'],action[0:4])
-        self.update_set_(inputs['separation'],action[4:8])
-        self.update_set_(inputs['log_intensity'],action[8:12])
-        self.update_set_(inputs['intensity_ratio'],action[12:16])
-        self.update_set_(outputs['priority'],action[16:20])
+        self.update_set_(inputs['_elevation'],action[0:4])
+        self.update_set_(inputs['_separation'],action[4:8])
+        self.update_set_(inputs['_log_intensity'],action[8:12])
+        self.update_set_(inputs['_intensity_ratio'],action[12:16])
+        self.update_set_(outputs['_priority'],action[16:20])
 
     def update_action(self):
         """
@@ -123,11 +124,11 @@ class DemixController:
         inputs=self.config['inputs']
         outputs=self.config['outputs']
 
-        self.update_action_(inputs['elevation'],action[0:4])
-        self.update_action_(inputs['separation'],action[4:8])
-        self.update_action_(inputs['log_intensity'],action[8:12])
-        self.update_action_(inputs['intensity_ratio'],action[12:16])
-        self.update_action_(outputs['priority'],action[16:20])
+        self.update_action_(inputs['_elevation'],action[0:4])
+        self.update_action_(inputs['_separation'],action[4:8])
+        self.update_action_(inputs['_log_intensity'],action[8:12])
+        self.update_action_(inputs['_intensity_ratio'],action[12:16])
+        self.update_action_(outputs['_priority'],action[16:20])
 
         return action
 
@@ -136,22 +137,22 @@ class DemixController:
         using the membership limits, create fuzzy controller
         """
         # Define the antecedents using ranges
-        elevation = fcontrol.Antecedent(np.arange(*self.config['inputs']['elevation']['range']), 'elevation')
-        separation= fcontrol.Antecedent(np.arange(*self.config['inputs']['separation']['range']), 'separation')
-        log_intensity = fcontrol.Antecedent(np.arange(*self.config['inputs']['log_intensity']['range']), 'log_intensity')
-        intensity_ratio= fcontrol.Antecedent(np.arange(*self.config['inputs']['intensity_ratio']['range']), 'intensity_ratio')
+        elevation = fcontrol.Antecedent(np.arange(*self.config['inputs']['_elevation']['range']), 'elevation')
+        separation= fcontrol.Antecedent(np.arange(*self.config['inputs']['_separation']['range']), 'separation')
+        log_intensity = fcontrol.Antecedent(np.arange(*self.config['inputs']['_log_intensity']['range']), 'log_intensity')
+        intensity_ratio= fcontrol.Antecedent(np.arange(*self.config['inputs']['_intensity_ratio']['range']), 'intensity_ratio')
 
         # Define the consequents using ranges
-        priority = fcontrol.Consequent(np.arange(*self.config['outputs']['priority']['range']), 'priority')
+        priority = fcontrol.Consequent(np.arange(*self.config['outputs']['_priority']['range']), 'priority')
   
         # Define membership functions for inputs using config
-        for var_name, var in zip(['elevation', 'separation', 'log_intensity', 'intensity_ratio'], [elevation, separation, log_intensity, intensity_ratio]):
+        for var_name, var in zip(['_elevation', '_separation', '_log_intensity', '_intensity_ratio'], [elevation, separation, log_intensity, intensity_ratio]):
             for term, limits in self.config['inputs'][var_name].items():
                if term != 'range':
                   var[term] = fuzz.trapmf(var.universe, limits)
 
         # Define membership functions for outputs using config
-        for var_name, var in zip(['priority'], [priority]):
+        for var_name, var in zip(['_priority'], [priority]):
             for term, limits in self.config['outputs'][var_name].items():
                if term != 'range':
                   var[term] = fuzz.trapmf(var.universe, limits)
@@ -189,7 +190,7 @@ class DemixController:
         """
         return 'high' set priority cutoff, using first value
         """
-        return self.config['outputs']['priority']['high'][0]
+        return self.config['outputs']['_priority']['high'][0]
 
     def print_config(self,filename=None):
         """
