@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import numpy as np
 from demix_sac import DemixingAgent
 from demixingenv import DemixingEnv

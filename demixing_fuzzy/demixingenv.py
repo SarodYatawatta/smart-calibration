@@ -12,6 +12,7 @@ sys.path.append(os.path.relpath('../calibration'))
 from calibration_tools import *
 import generate_data
 from generate_data import simulate_data
+from demix_controller import DemixController
 
 # (try to) use a GPU for computation?
 use_cuda=True
@@ -19,13 +20,6 @@ if use_cuda and torch.cuda.is_available():
   mydevice=torch.device('cuda')
 else:
   mydevice=torch.device('cpu')
-
-# action direction: range [0,1], select source if >0.5
-LOW=0.0
-HIGH=1.
-# action max ADMM iter: range [5,30] 
-LOW_iter=5
-HIGH_iter=30
 
 # scaling of input data to prevent saturation
 INF_SCALE=1e-3
@@ -50,13 +44,15 @@ class DemixingEnv(gym.Env):
     self.K=K
     self.Ninf=Ninf
     self.Npix=Npix
-    # actions: 0,1,..,K-1 : action (K-1+1)x1 each in [-1,1]
-    self.action_space = spaces.Box(low=np.ones((self.K,1))*(-1),high=np.ones((self.K,1))*(1),dtype=np.float32)
+    # actions: 20 each in [-1,1]
+    self.n_fuzzy=20
+    self.action_space = spaces.Box(low=np.ones((self.n_fuzzy,1))*(-1),high=np.ones((self.n_fuzzy,1))*(1),dtype=np.float32)
     # observation (state space): residual and influence maps
-    # metadata: separation,azimuth,elevation (K values),frequency,n_stations
+    # metadata: separation,azimuth,elevation,log_fluxes (K values),frequency,n_stations (2 values)
+    self.n_metadata=4*self.K+2
     self.observation_space = spaces.Dict({
        'infmap': spaces.Box(low=-np.inf,high=np.inf,shape=(Ninf,Ninf),dtype=np.float32),
-       'metadata': spaces.Box(low=-np.inf,high=np.inf,shape=(3*self.K+2,1),dtype=np.float32)
+       'metadata': spaces.Box(low=-np.inf,high=np.inf,shape=(self.n_metadata,1),dtype=np.float32)
        })
     # frequencies for the simulation
     self.Nf=Nf
@@ -75,10 +71,15 @@ class DemixingEnv(gym.Env):
     self.in_admm_rho='./admm_rho.txt'
     # output ADMM rho
     self.out_admm_rho='./admm_rho_epi.txt'
+    # max ADMM iterations
+    self.maxiter=15
     self.rho=np.ones(self.K,dtype=np.float32)
     # cluster id
     self.rho_id=np.ones(self.K,dtype=int)
     self.elevation=None
+    self.separation=None
+    self.log_fluxes=None
+    self.target_flux=0
     # extra fields for reset()
     self.freq_low=None
     self.freq_high=None
@@ -90,7 +91,7 @@ class DemixingEnv(gym.Env):
     # standard deviation of target map (raw data and residual)
     self.std_data=0
     self.std_residual=0
-    self.metadata=np.zeros(3*self.K+2,dtype=np.float32)
+    self.metadata=np.zeros(self.n_metadata,dtype=np.float32)
     self.N=1
     self.prev_clus_id=None
     self.reward0=0
@@ -99,19 +100,28 @@ class DemixingEnv(gym.Env):
     self.provide_hint=provide_hint
     self.tau=100 # temperature, divide AIC by 1/tau before softmin()
 
+    # fuzzy controller (initialized at each reset())
+    self.ctrl=DemixController(n_action=self.n_fuzzy)
+
   def step(self, action):
-    # action : Kx1, 0,1,..,K-2 : direction probabilities, 
-    # K-1: max ADMM iteration (scaled)
-    action_rho=action[0:self.K-1]
-    action_maxiter=action[self.K-1]
+    # action: fuzzy set boundaries, prioriy cutoff for being selected
+    # action : self.n_fuzzy x 1: in [-1,1] 
+    # map from [-1,1] to [0,1]
+    action_scaled=action*0.5+0.5
     done=False # make sure to return True at some point
-    # update state based on the action [-1,1] ->  rho = scale*(action)
-    rho =action_rho*(HIGH-LOW)/2+(HIGH+LOW)/2
-    # map [-1,1] to max iterations (integer)
-    self.maxiter =int(action_maxiter*(HIGH_iter-LOW_iter)/2+(HIGH_iter+LOW_iter)/2)
+    # update fuzzy controller based on action
+    self.ctrl.update_limits(action_scaled)
+    self.ctrl.create_controller()
+    # evaluate sky using controller
+    flux_ratio=np.exp(self.log_fluxes)/self.target_flux
+    priority=self.ctrl.evaluate(self.elevation,self.separation,self.log_fluxes,flux_ratio)
+    priority_cutoff=self.ctrl.get_high_priority()
     # find indices of selected directions
-    indices=np.where(rho.squeeze()>0.5)
-    self.clus_id=np.unique(indices[0]).tolist()
+    indices=np.where(priority >= priority_cutoff)
+    if len(indices) > 0:
+      self.clus_id=np.unique(indices[0]).tolist()
+    else:
+      self.clus_id=list()
     self.clus_id.append(self.K-1)
     # check if current cluster selection (action) is same as previous
     if self.prev_clus_id==self.clus_id:
@@ -157,10 +167,13 @@ class DemixingEnv(gym.Env):
 
   def reset(self):
     # run input simulations, for debugging use e.g., Tdelta=300,do_image=True
-    separation,azimuth,elevation,freq_low,freq_high,ra0,dec0,N,_=simulate_data(Nf=self.Nf)
+    separation,azimuth,elevation,freq_low,freq_high,ra0,dec0,N,fluxes=simulate_data(Nf=self.Nf)
     # remember stations
     self.N=N
     self.elevation=elevation
+    self.separation=separation
+    self.log_fluxes=np.log(fluxes)
+    self.target_flux=fluxes[-1]
     # freq range (MHz)
     self.freq_low=freq_low/1e6
     self.freq_high=freq_high/1e6
@@ -175,7 +188,7 @@ class DemixingEnv(gym.Env):
     self.print_clusters_()
     self.output_rho_()
 
-    self.maxiter=10 # need to be within [LOW_iter,HIGH_iter]
+    self.maxiter=15 # provide a reasonable value
     # run calibration, use --oversubscribe if not enough slots are available
     sb.run('mpirun -np 3 --oversubscribe '+generate_data.sagecal_mpi+' -f \'L_SB*.MS\'  -A '+str(self.maxiter)+' -P 2 -s sky.txt -c '+self.cluster+' -I DATA -O MODEL_DATA -p zsol -G '+self.out_admm_rho+' -n 4 -t '+str(self.Tdelta)+' > calibration.out',shell=True)
 
@@ -188,10 +201,11 @@ class DemixingEnv(gym.Env):
     # caculate baseline reward for this episode, with only 1 direction calibrated
     self.reward0=self.calculate_reward_(1)
     # concatenate metadata
-    metadata=np.zeros(3*self.K+2,dtype=np.float32)
+    metadata=np.zeros(self.n_metadata,dtype=np.float32)
     metadata[:self.K]=separation
     metadata[self.K:2*self.K]=azimuth
     metadata[2*self.K:3*self.K]=elevation
+    metadata[3*self.K:4*self.K]=self.log_fluxes
     metadata[-2]=freq_low
     metadata[-1]=N
     self.metadata=metadata
@@ -205,7 +219,10 @@ class DemixingEnv(gym.Env):
     # remember current action taken
     self.prev_clus_id=self.clus_id.copy()
 
-    self.hint=None
+    # create default fuzzy controller (to get the hint)
+    self.ctrl.create_controller()
+    self.hint=self.get_hint()
+
     return observation
 
   # return the average std of data, by making images
@@ -281,50 +298,11 @@ class DemixingEnv(gym.Env):
         fh.write(str(self.rho_id[ci])+' '+str(1)+' '+str(self.rho[ci])+' 1.0\n')
     fh.close()
 
-  @staticmethod
-  def scalar_to_kvec(n,K=5):
-    # convert integer to binary bits, return array of size K
-    ll=[1 if digit=='1' else 0 for digit in bin(n)[2:]]
-    a=np.zeros(K)
-    a[-len(ll):]=ll
-    return a
-
   def get_hint(self):
-    # iterate over all possible actions
-    AIC=np.zeros(2**(self.K-1))
-    for index in range(2**(self.K-1)):
-        action=self.scalar_to_kvec(index,self.K-1)
-        # check if there are -ve elevation clusters
-        # if so, give a high AIC
-        chosen_el=itertools.compress(self.elevation[:-1],action)
-        any_neg_dir=any([x<1 for x in chosen_el])
-        if any_neg_dir:
-           AIC[index]=1e5
-        else:
-           indices=np.where(action>0)
-           clus_id=np.unique(indices[0]).tolist()
-           clus_id.append(self.K-1)
-           Kselected=len(clus_id)
-           self.print_clusters_(clus_id)
-           self.output_rho_(clus_id)
-           sb.run('mpirun -np 3 --oversubscribe '+generate_data.sagecal_mpi+' -f \'L_SB*.MS\' -A '+str(self.maxiter)+' -P 2 -s sky.txt -c '+self.cluster+' -I DATA -O MODEL_DATA -p zsol -G '+self.out_admm_rho+' -n 4 -t '+str(self.Tdelta)+' > calibration.out',shell=True)
-           # calculate noise
-           std_residual=self.get_noise_(col='MODEL_DATA')
-           AIC[index]=(self.N*std_residual/self.std_data)**2+Kselected*self.N
-
-    # take softmin
-    probs=np.exp(-AIC/self.tau)/np.sum(np.exp(-AIC/self.tau))
-    # map 2**(K-1) to K-1 vector
-    hint=np.zeros(self.K-1)
-    for ci in range(2**(self.K-1)):
-        hint+=probs[ci]*self.scalar_to_kvec(ci,self.K-1)
-    # transform [0,1] back to [-1,1] space
-    hint=(hint-(HIGH+LOW)/2)*(2/(HIGH-LOW))
-    # append max ADMM iterations
-    hint_full=np.zeros(self.K)
-    hint_full[0:self.K-1]=hint
-    hint_full[self.K-1]=(self.maxiter-(HIGH_iter+LOW_iter)/2)*(2/(HIGH_iter-LOW_iter))
-    return hint_full
+    # Hint is just the default fuzzy config converted to an action
+    hint_full=self.ctrl.update_action()
+    # map from [0,1] to [-1,1]
+    return 2.0*(hint_full-0.5)
 
   def calculate_reward_(self,Kselected):
     # reward ~ 1/(noise (variance) reduction) /(clusters calibrated)
@@ -340,8 +318,8 @@ class DemixingEnv(gym.Env):
     # normalize reward (mean/variance found by the initial ~3000 reward values)
     reward=(reward-(-859))/3559.0
 
-    # penalty: increased iterations result in increased penalty
-    penalty=-self.maxiter/100
+    # penalty: from fuzzy controller
+    penalty=0
 
     return reward+penalty
 
@@ -360,14 +338,13 @@ class DemixingEnv(gym.Env):
 
 #dem=DemixingEnv(K=6,Nf=3,Ninf=128,Npix=1024,Tdelta=10)
 #obs=dem.reset()
-#hint=dem.get_hint()
+#hint=dem.hint
 #sb.run('mv influenceI.fits inf0.fits',shell=True)
-#action=np.zeros(5+1)
-#action[-1]=0 # max iterations
-#action[0]=1
+#action=hint#2*(np.random.rand(20)-0.5)
 #obs,reward,_,_=dem.step(action=action)
 #sb.run('mv influenceI.fits inf1.fits',shell=True)
-#action[1]=1
+#action=2*(np.random.rand(20)-0.5)
+#action[-1]=1
 #obs,reward,_,_=dem.step(action=action)
 #sb.run('mv influenceI.fits inf2.fits',shell=True)
 #action[2]=1
