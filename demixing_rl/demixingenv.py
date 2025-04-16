@@ -124,7 +124,7 @@ class DemixingEnv(gym.Env):
     self.print_clusters_()
     self.output_rho_()
     # run calibration, use --oversubscribe if not enough slots are available
-    sb.run('mpirun -np 3 --oversubscribe '+generate_data.sagecal_mpi+' -f \'L_SB*.MS\'  -A '+str(self.maxiter)+' -P 2 -s sky.txt -c '+self.cluster+' -I DATA -O MODEL_DATA -p zsol -G '+self.out_admm_rho+' -n 4 -t '+str(self.Tdelta)+' > calibration.out',shell=True)
+    sb.run('mpirun -np 3 --oversubscribe '+generate_data.sagecal_mpi+' -f \'L_SB*.MS\'  -A '+str(self.maxiter)+' -P 2 -s sky.txt -c '+self.cluster+' -I DATA -O MODEL_DATA -p zsol -G '+self.out_admm_rho+' -n 4 -t '+str(self.Tdelta)+' -E 1 > calibration.out',shell=True)
 
     # calculate influence (update the command)
     sb.run(self.cmd_calc_influence,shell=True)
@@ -177,7 +177,7 @@ class DemixingEnv(gym.Env):
 
     self.maxiter=10 # need to be within [LOW_iter,HIGH_iter]
     # run calibration, use --oversubscribe if not enough slots are available
-    sb.run('mpirun -np 3 --oversubscribe '+generate_data.sagecal_mpi+' -f \'L_SB*.MS\'  -A '+str(self.maxiter)+' -P 2 -s sky.txt -c '+self.cluster+' -I DATA -O MODEL_DATA -p zsol -G '+self.out_admm_rho+' -n 4 -t '+str(self.Tdelta)+' > calibration.out',shell=True)
+    sb.run('mpirun -np 3 --oversubscribe '+generate_data.sagecal_mpi+' -f \'L_SB*.MS\'  -A '+str(self.maxiter)+' -P 2 -s sky.txt -c '+self.cluster+' -I DATA -O MODEL_DATA -p zsol -G '+self.out_admm_rho+' -n 4 -t '+str(self.Tdelta)+' -E 1 > calibration.out',shell=True)
 
     # calculate influence (image at ./influenceI.fits)
     self.cmd_calc_influence='./doinfluence.sh '+str(self.freq_low)+' '+str(self.freq_high)+' '+str(self.ra0)+' '+str(self.dec0)+' '+str(self.Tdelta)+' > influence.out'
@@ -307,7 +307,7 @@ class DemixingEnv(gym.Env):
            Kselected=len(clus_id)
            self.print_clusters_(clus_id)
            self.output_rho_(clus_id)
-           sb.run('mpirun -np 3 --oversubscribe '+generate_data.sagecal_mpi+' -f \'L_SB*.MS\' -A '+str(self.maxiter)+' -P 2 -s sky.txt -c '+self.cluster+' -I DATA -O MODEL_DATA -p zsol -G '+self.out_admm_rho+' -n 4 -t '+str(self.Tdelta)+' > calibration.out',shell=True)
+           sb.run('mpirun -np 3 --oversubscribe '+generate_data.sagecal_mpi+' -f \'L_SB*.MS\' -A '+str(self.maxiter)+' -P 2 -s sky.txt -c '+self.cluster+' -I DATA -O MODEL_DATA -p zsol -G '+self.out_admm_rho+' -n 4 -t '+str(self.Tdelta)+' -E 1 > calibration.out',shell=True)
            # calculate noise
            std_residual=self.get_noise_(col='MODEL_DATA')
            AIC[index]=(self.N*std_residual/self.std_data)**2+Kselected*self.N
