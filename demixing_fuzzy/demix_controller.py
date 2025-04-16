@@ -167,7 +167,7 @@ class DemixController:
         rule5 = fcontrol.Rule(elevation['medium'] | separation['medium'] | log_intensity['medium'] | intensity_ratio['medium'], priority['medium'])
 
         system=fcontrol.ControlSystem([rule1,rule2,rule3,rule4,rule5,rule6,rule7])
-        self.fuzzy_ctrl=fcontrol.ControlSystemSimulation(system)
+        self.fuzzy_ctrl=fcontrol.ControlSystemSimulation(system,cache=False)
 
     def evaluate(self,elevation,separation,log_intensity,intensity_ratio):
         """
@@ -182,7 +182,11 @@ class DemixController:
           self.fuzzy_ctrl.input['log_intensity']=log_intensity[ci]
           self.fuzzy_ctrl.input['intensity_ratio']=intensity_ratio[ci]
           self.fuzzy_ctrl.compute()
-          priority[ci]=self.fuzzy_ctrl.output['priority']
+          # try to handle delays in compute() and output is missing
+          try:
+              priority[ci]=self.fuzzy_ctrl.output['priority']
+          except KeyError:
+              priority[ci]=0.1
 
         return priority
 
