@@ -23,4 +23,7 @@ pytorch, numpy, scipy, python-casacore, gymnasium, scikit-fuzzy
 - Before running the training, copy LOFAR LBA/HBA antenna tables to this directory, as LBA and HBA. Each of these directories should include ANTENNA, FIELD and LOFAR_ANTENNA_FIELD tables.
 - Also edit *../calibration/generate_data.py* to point to makems, excon, sagecal_gpu, and sagecal-mpi_gpu depending on your installation.
 
-wo 16 apr 2025  9:11:57 CEST
+## More information
+See <a href="./INTRO.md">this document</a> for more information.
+
+do 17 apr 2025 14:14:32 CEST
