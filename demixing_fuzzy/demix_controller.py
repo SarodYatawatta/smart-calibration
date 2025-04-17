@@ -167,7 +167,8 @@ class DemixController:
         rule5 = fcontrol.Rule(elevation['medium'] | separation['medium'] | log_intensity['medium'] | intensity_ratio['medium'], priority['medium'])
 
         system=fcontrol.ControlSystem([rule1,rule2,rule3,rule4,rule5,rule6,rule7])
-        self.fuzzy_ctrl=fcontrol.ControlSystemSimulation(system,cache=False)
+        # Flush cache after ~ n_directions evaluations
+        self.fuzzy_ctrl=fcontrol.ControlSystemSimulation(system,flush_after_run=7)
 
     def evaluate(self,elevation,separation,log_intensity,intensity_ratio):
         """
