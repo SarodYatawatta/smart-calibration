@@ -21,7 +21,7 @@ We have one output (consequent):
 
 - Priority: priority of the outlier source being selected for demixing.
 
-In the following table, we provide the nominal values *b*,...,*e* for each of the input and output fuzzy variables. The *Low*, *Mid* and *High* membership functions are defined by a trapezoid, with four values.
+Note that none of the antecedents or consequents are directly dependent on the data, they are in fact dependent on the meta-data. In the following table, we provide the nominal values *b*,...,*e* for each of the input and output fuzzy variables. The *Low*, *Mid* and *High* membership functions are defined by a trapezoid, with four values.
 
 
 |  Variable | Range | Low | Mid | High|
@@ -37,8 +37,12 @@ The relationships between the inputs and the outputs are defined by using fuzzy 
 
 The complicated task in designing and tuning the fuzzy controller is determining the values *b*,...*e* to get the desired performance and accuracy. In order to do this, we use reinforcement learning.
 
-The performance of the fuzzy controller is evaluated using simulated LOFAR observations (both LBA and HBA). In each observation, the fuzzy controller gives the priority of each outlier source, and the sources with *High* priority are used in demixing. The evaluation of this configuration is done using the Akaike information criterion. In this criterion, we evaluate the quality of the output data (after demixing) and also the cost that has to be incurred (in terms of the number of parameters or the degrees of freedom). See [this paper](https://arxiv.org/abs/2301.03933) for a more mathematical description of the evaluation.
+The performance of the fuzzy controller is evaluated using simulated LOFAR observations (both LBA and HBA). In each observation, the fuzzy controller gives the priority of each outlier source, and the sources with *High* priority are used in demixing. The evaluation of this configuration is done using the Akaike information criterion (AIC). In this criterion, we evaluate the quality of the output data (after demixing) and also the cost that has to be incurred (in terms of the number of parameters or the degrees of freedom). See [this paper](https://arxiv.org/abs/2301.03933) for a more mathematical description of the evaluation.
 
 Using the performance of the fuzzy controller in each simulated observation, we calculate a reward for training the reinforcement learning agent. The reinforcement learning agent will determine the values *b*,...,*e* for all inputs and outputs of the fuzzy controller. These fine-tunes values will be used in the final fuzzy controller.
+
+In a purely data driven approach, we can directly use the Akaike information criterion for determining the best configuration to use (i.e., the best choice of outlier directions). The drawbacks of a data driven approach are many. First, for a large amount of data, a small amount of data need to be sampled to evaluate the AIC. Depending on what part of data are sampled, the outcome might be different from the correct result. Secondly, for *K* outlier directions, there are *2^K* possible configurations and evaluation of all possible configurations need substantial computing power.
+
+After training the fuzzy controller, we can combine the data driven and the fuzzy controller based decisions, for example by weighting the outcome of each approach by taking the product of the priorities.
 
 do 17 apr 2025 12:03:48 CEST
