@@ -41,7 +41,7 @@ if __name__ == '__main__':
     n_games = args.iteration
 
     total_steps=0
-    warmup_steps=args.warmup # during warmup, random actions are taken
+    warmup_steps=args.warmup*7 # during warmup, random actions are taken
     
     # load from disk networks, replaymem
     if args.load:
