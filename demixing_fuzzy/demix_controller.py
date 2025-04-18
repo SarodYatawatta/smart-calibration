@@ -187,7 +187,8 @@ class DemixController:
           try:
               priority[ci]=self.fuzzy_ctrl.output['priority']
           except KeyError:
-              priority[ci]=0.1
+              print('Warning: compute() fail, using fallback')
+              priority[ci]=50
 
         return priority
 

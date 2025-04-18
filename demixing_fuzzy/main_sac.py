@@ -47,7 +47,7 @@ if __name__ == '__main__':
     n_games = args.iteration
 
     total_steps=0
-    warmup_steps=args.warmup # during warmup, random actions are taken
+    warmup_steps=args.warmup*args.steps # during warmup, random actions are taken
     
     # load from disk networks, replaymem
     if args.load:
@@ -73,12 +73,12 @@ if __name__ == '__main__':
 
             if provide_hint:
               observation_, reward, done, hint, info = env.step(action)
-              scaled_reward = reward *10 if reward>0 else reward
+              scaled_reward = reward *10 if reward>0.01 else reward
               agent.store_transition(observation, action, scaled_reward,
                                     observation_, done, hint)
             else:
               observation_, reward, done, info = env.step(action)
-              scaled_reward = reward *10 if reward>0 else reward
+              scaled_reward = reward *10 if reward>0.01 else reward
               agent.store_transition(observation, action, scaled_reward,
                                     observation_, done, np.zeros(n_fuzzy))
 
