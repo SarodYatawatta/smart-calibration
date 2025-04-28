@@ -32,16 +32,18 @@ class DemixingEnv(gym.Env):
   metadata = {'render.modes': ['human']}
 
   # K=number of directions (target+outliers)
-  # state(observation): sep,az,el(all K),freq,target influence map
+  # state(observation): sep,az,el(all K),freq,target influence map (if enabled)
   # residual map: use to calculate reward, influence map: feed to network
   # reward: decrease in residual/number of directions demixed + influence map penalty
   # Ninf=influence map dimensions NinfxNinf (set in doinfluence.sh)
   # Npix=residual map dimension Npix x Npix
-  def __init__(self, K=2, Nf=3, Ninf=128, Npix=1024, Tdelta=10, provide_hint=False):
+  # if provide_influence=False, no influence map for state, and no reward addition
+  def __init__(self, K=2, Nf=3, Ninf=128, Npix=1024, Tdelta=10, provide_hint=False, provide_influence=False):
     super(DemixingEnv, self).__init__()
     # Define action and observation space
     # action space dim=number of outlier clusters=vector (K-1)x1, K: number of directions + 1 for max ADMM iterations
     self.K=K
+    self.provide_influence=provide_influence
     self.Ninf=Ninf
     self.Npix=Npix
     # actions: 20 each in [-1,1]
@@ -137,11 +139,14 @@ class DemixingEnv(gym.Env):
     sb.run('mpirun -np 3 --oversubscribe '+generate_data.sagecal_mpi+' -f \'L_SB*.MS\'  -A '+str(self.maxiter)+' -P 2 -s sky.txt -c '+self.cluster+' -I DATA -O MODEL_DATA -p zsol -G '+self.out_admm_rho+' -n 4 -t '+str(self.Tdelta)+' -E 1 > calibration.out',shell=True)
 
     # calculate influence (update the command)
-    sb.run(self.cmd_calc_influence,shell=True)
-    hdul = fits.open('./influenceI.fits')
-    infdata=hdul[0].data[0,:,:,:]
-    infdata=infdata.astype(np.float32)
-    hdul.close()
+    if self.provide_influence:
+        sb.run(self.cmd_calc_influence,shell=True)
+        hdul = fits.open('./influenceI.fits')
+        infdata=hdul[0].data[0,:,:,:]
+        infdata=infdata.astype(np.float32)
+        hdul.close()
+    else:
+        infdata=0
     # metadata 0:K-1 are separations,
     # For the directions included in calibration, set separation to 0
     metadata_update=self.metadata.copy()
@@ -154,7 +159,7 @@ class DemixingEnv(gym.Env):
 
     # calculate reward, subtract from default step reward
     reward=self.calculate_reward_(Kselected)-self.reward0
-    influence_std=infdata.std()/100 # arbitray scaling, because influence is alreade scaled in calculation
+    influence_std=infdata.std()/100 if self.provide_influence else 0 # arbitray scaling, because influence is alreade scaled in calculation
     print('STD %f %f Inf %f K %d N %d reward %f'%(self.std_data,self.std_residual,influence_std,Kselected,self.N,reward))
     info={}
     # calculate and store the hint for future use
@@ -192,9 +197,12 @@ class DemixingEnv(gym.Env):
     # run calibration, use --oversubscribe if not enough slots are available
     sb.run('mpirun -np 3 --oversubscribe '+generate_data.sagecal_mpi+' -f \'L_SB*.MS\'  -A '+str(self.maxiter)+' -P 2 -s sky.txt -c '+self.cluster+' -I DATA -O MODEL_DATA -p zsol -G '+self.out_admm_rho+' -n 4 -t '+str(self.Tdelta)+' > calibration.out',shell=True)
 
-    # calculate influence (image at ./influenceI.fits)
-    self.cmd_calc_influence='./doinfluence.sh '+str(self.freq_low)+' '+str(self.freq_high)+' '+str(self.ra0)+' '+str(self.dec0)+' '+str(self.Tdelta)+' > influence.out'
-    sb.run(self.cmd_calc_influence,shell=True)
+
+    if self.provide_influence:
+       # calculate influence (image at ./influenceI.fits)
+       self.cmd_calc_influence='./doinfluence.sh '+str(self.freq_low)+' '+str(self.freq_high)+' '+str(self.ra0)+' '+str(self.dec0)+' '+str(self.Tdelta)+' > influence.out'
+       sb.run(self.cmd_calc_influence,shell=True)
+
     self.std_data=self.get_noise_(col='DATA')
     self.std_residual=self.get_noise_(col='MODEL_DATA')
 
@@ -209,10 +217,14 @@ class DemixingEnv(gym.Env):
     metadata[-2]=freq_low
     metadata[-1]=N
     self.metadata=metadata
-    hdul = fits.open('./influenceI.fits')
-    infdata=hdul[0].data[0,:,:,:]
-    infdata=infdata.astype(np.float32)
-    hdul.close()
+    if self.provide_influence:
+       hdul = fits.open('./influenceI.fits')
+       infdata=hdul[0].data[0,:,:,:]
+       infdata=infdata.astype(np.float32)
+       hdul.close()
+    else:
+       infdata=0
+
     observation={
       'infmap': infdata*INF_SCALE,
       'metadata': metadata*META_SCALE }

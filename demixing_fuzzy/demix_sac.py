@@ -7,6 +7,10 @@ import numpy as np
 import pickle # for saving replaymemory
 import os # for saving networks 
 
+
+# output of first linear layer, increase this if metadata size is larger
+INNER_DIM=32
+
 # (try to) use a GPU for computation?
 use_cuda=True
 if use_cuda and T.cuda.is_available():
@@ -21,13 +25,16 @@ def init_layer(layer,sc=None):
   T.nn.init.uniform_(layer.bias.data, -sc, sc)
 
 class ReplayBuffer(object):
-    def __init__(self, max_size, input_shape, n_actions, M, filename='replaymem_sac.model'):
+    def __init__(self, max_size, input_shape, n_actions, M, use_influence=False, filename='replaymem_sac.model'):
         self.mem_size = max_size
         self.M=M # metadata
         self.mem_cntr = 0
-        self.state_memory_img = np.zeros((self.mem_size, *input_shape), dtype=np.float32)
+        self.use_influence=use_influence
+        if self.use_influence:
+           self.state_memory_img = np.zeros((self.mem_size, *input_shape), dtype=np.float32)
         self.state_memory_sky= np.zeros((self.mem_size, self.M), dtype=np.float32)
-        self.new_state_memory_img = np.zeros((self.mem_size, *input_shape), dtype=np.float32)
+        if self.use_influence:
+           self.new_state_memory_img = np.zeros((self.mem_size, *input_shape), dtype=np.float32)
         self.new_state_memory_sky = np.zeros((self.mem_size, self.M), dtype=np.float32)
         self.action_memory = np.zeros((self.mem_size,n_actions), dtype=np.float32)
         self.reward_memory = np.zeros(self.mem_size, dtype=np.float32)
@@ -40,9 +47,11 @@ class ReplayBuffer(object):
         self.action_memory[index] = action
         self.reward_memory[index] = reward
         self.terminal_memory[index] = done
-        self.state_memory_img[index] = state['infmap']
+        if self.use_influence:
+           self.state_memory_img[index] = state['infmap']
         self.state_memory_sky[index] = state['metadata']
-        self.new_state_memory_img[index] = state_['infmap']
+        if self.use_influence:
+           self.new_state_memory_img[index] = state_['infmap']
         self.new_state_memory_sky[index] = state_['metadata']
         self.hint_memory[index]=hint
 
@@ -52,11 +61,11 @@ class ReplayBuffer(object):
         max_mem = min(self.mem_cntr, self.mem_size)
         batch = np.random.choice(max_mem, batch_size, replace=False)
 
-        states = {'infmap': self.state_memory_img[batch],
+        states = {'infmap': self.state_memory_img[batch] if self.use_influence else 0,
                   'metadata': self.state_memory_sky[batch]}
         actions = self.action_memory[batch]
         rewards = self.reward_memory[batch]
-        states_ = {'infmap': self.new_state_memory_img[batch],
+        states_ = {'infmap': self.new_state_memory_img[batch] if self.use_influence else 0,
                   'metadata': self.new_state_memory_sky[batch]}
         terminal = self.terminal_memory[batch]
         hint=self.hint_memory[batch]
@@ -72,9 +81,11 @@ class ReplayBuffer(object):
           temp=pickle.load(f)
           self.mem_size=temp.mem_size
           self.mem_cntr=temp.mem_cntr
-          self.state_memory_img=temp.state_memory_img
+          if self.use_influence:
+             self.state_memory_img=temp.state_memory_img
           self.state_memory_sky=temp.state_memory_sky
-          self.new_state_memory_img=temp.new_state_memory_img
+          if self.use_influence:
+             self.new_state_memory_img=temp.new_state_memory_img
           self.new_state_memory_sky=temp.new_state_memory_sky
           self.action_memory=temp.action_memory
           self.reward_memory=temp.reward_memory
@@ -83,24 +94,26 @@ class ReplayBuffer(object):
 
 # input: state, output: action space \in R^|action|
 class CriticNetwork(nn.Module):
-    def __init__(self, lr, input_dims, n_actions, name, M):
+    def __init__(self, lr, input_dims, n_actions, name, M, use_influence=False):
         super(CriticNetwork, self).__init__()
         self.input_dims = input_dims
+        self.use_influence= use_influence
         # width and height of image (note dim[0]=channels=1)
         w=input_dims[1]
         h=input_dims[2]
         self.n_actions = n_actions
         # input 1 chan: grayscale image
-        self.conv1=nn.Conv2d(1,16,kernel_size=5, stride=2)
-        self.bn1=nn.BatchNorm2d(16)
-        self.conv2=nn.Conv2d(16,32,kernel_size=5, stride=2)
-        self.bn2=nn.BatchNorm2d(32)
-        self.conv3=nn.Conv2d(32,32,kernel_size=5,stride=2)
-        self.bn3=nn.BatchNorm2d(32)
+        if self.use_influence:
+           self.conv1=nn.Conv2d(1,16,kernel_size=5, stride=2)
+           self.bn1=nn.BatchNorm2d(16)
+           self.conv2=nn.Conv2d(16,32,kernel_size=5, stride=2)
+           self.bn2=nn.BatchNorm2d(32)
+           self.conv3=nn.Conv2d(32,32,kernel_size=5,stride=2)
+           self.bn3=nn.BatchNorm2d(32)
 
         # network to pass M values forward
         self.fc1=nn.Linear(M+n_actions,128)
-        self.fc2=nn.Linear(128,16)
+        self.fc2=nn.Linear(128,INNER_DIM)
 
         # function to calculate output image size per single conv operation
         def conv2d_size_out(size,kernel_size=5,stride=2):
@@ -109,12 +122,17 @@ class CriticNetwork(nn.Module):
         convw=conv2d_size_out(conv2d_size_out(conv2d_size_out(w)))
         convh=conv2d_size_out(conv2d_size_out(conv2d_size_out(h)))
 
-        linear_input_size=convw*convh*32+16 # +16 from metadata network
+        if self.use_influence:
+           linear_input_size=convw*convh*32+INNER_DIM # +INNER_DIM from metadata network
+        else:
+           linear_input_size=INNER_DIM
+
         self.head=nn.Linear(linear_input_size,1)
 
-        init_layer(self.conv1)
-        init_layer(self.conv2)
-        init_layer(self.conv3)
+        if self.use_influence:
+           init_layer(self.conv1)
+           init_layer(self.conv2)
+           init_layer(self.conv3)
         init_layer(self.fc1)
         init_layer(self.fc2)
         init_layer(self.head,0.003)
@@ -127,14 +145,19 @@ class CriticNetwork(nn.Module):
         self.to(self.device)
 
     def forward(self, x, z, action): # x is image, z is the sky tensor
-        x=F.relu(self.bn1(self.conv1(x))) # image
-        x=F.relu(self.bn2(self.conv2(x)))
-        x=F.relu(self.bn3(self.conv3(x)))
-        x=T.flatten(x,start_dim=1)
+        if self.use_influence:
+           x=F.relu(self.bn1(self.conv1(x))) # image
+           x=F.relu(self.bn2(self.conv2(x)))
+           x=F.relu(self.bn3(self.conv3(x)))
+           x=T.flatten(x,start_dim=1)
+
         z=F.relu(self.fc1(T.cat((z,action),1))) # action, sky
         z=F.relu(self.fc2(z))
 
-        qval=self.head(T.cat((x,z),1))
+        if self.use_influence:
+           qval=self.head(T.cat((x,z),1))
+        else:
+           qval=self.head(z)
 
         return qval 
 
@@ -146,8 +169,9 @@ class CriticNetwork(nn.Module):
 
 # input: state output: [0,1]^|action|
 class ActorNetwork(nn.Module):
-    def __init__(self, lr, input_dims, n_actions, max_action, name, M):
+    def __init__(self, lr, input_dims, n_actions, max_action, name, M, use_influence=False):
         super(ActorNetwork, self).__init__()
+        self.use_influence=use_influence
         self.input_dims = input_dims
         self.max_action = max_action
         self.reparam_noise=1e-6
@@ -156,16 +180,17 @@ class ActorNetwork(nn.Module):
         h=input_dims[2]
         self.n_actions = n_actions
         # input 1 chan: grayscale image
-        self.conv1=nn.Conv2d(1,16,kernel_size=5, stride=2)
-        self.bn1=nn.BatchNorm2d(16)
-        self.conv2=nn.Conv2d(16,32,kernel_size=5, stride=2)
-        self.bn2=nn.BatchNorm2d(32)
-        self.conv3=nn.Conv2d(32,32,kernel_size=5,stride=2)
-        self.bn3=nn.BatchNorm2d(32)
+        if self.use_influence:
+           self.conv1=nn.Conv2d(1,16,kernel_size=5, stride=2)
+           self.bn1=nn.BatchNorm2d(16)
+           self.conv2=nn.Conv2d(16,32,kernel_size=5, stride=2)
+           self.bn2=nn.BatchNorm2d(32)
+           self.conv3=nn.Conv2d(32,32,kernel_size=5,stride=2)
+           self.bn3=nn.BatchNorm2d(32)
 
         # network to pass  M values (metadata) forward
         self.fc11=nn.Linear(M,128)
-        self.fc12=nn.Linear(128,16)
+        self.fc12=nn.Linear(128,INNER_DIM)
 
         # function to calculate output image size per single conv operation
         def conv2d_size_out(size,kernel_size=5,stride=2):
@@ -174,14 +199,19 @@ class ActorNetwork(nn.Module):
         convw=conv2d_size_out(conv2d_size_out(conv2d_size_out(w)))
         convh=conv2d_size_out(conv2d_size_out(conv2d_size_out(h)))
 
-        linear_input_size=convw*convh*32+16 # +16 from sky network
+        if self.use_influence:
+           linear_input_size=convw*convh*32+INNER_DIM # +INNER_DIM from sky network
+        else:
+           linear_input_size=INNER_DIM
+
         self.fc21=nn.Linear(linear_input_size,128)
         self.fc22mu=nn.Linear(128,n_actions)
         self.fc22logsigma=nn.Linear(128,n_actions)
 
-        init_layer(self.conv1)
-        init_layer(self.conv2)
-        init_layer(self.conv3)
+        if self.use_influence:
+           init_layer(self.conv1)
+           init_layer(self.conv2)
+           init_layer(self.conv3)
         init_layer(self.fc11)
         init_layer(self.fc12)
         init_layer(self.fc21)
@@ -195,14 +225,20 @@ class ActorNetwork(nn.Module):
         self.to(self.device)
 
     def forward(self, x, z): # x is image, z: metadata tensor
-        x=F.elu(self.bn1(self.conv1(x)))
-        x=F.elu(self.bn2(self.conv2(x)))
-        x=F.elu(self.bn3(self.conv3(x)))
-        x=T.flatten(x,start_dim=1)
+        if self.use_influence:
+           x=F.elu(self.bn1(self.conv1(x)))
+           x=F.elu(self.bn2(self.conv2(x)))
+           x=F.elu(self.bn3(self.conv3(x)))
+           x=T.flatten(x,start_dim=1)
+
         z=T.flatten(z,start_dim=1) # metadata
         z=F.relu(self.fc11(z)) # metadata
         z=F.relu(self.fc12(z))
-        x=F.elu(self.fc21(T.cat((x,z),1)))
+        if self.use_influence:
+           x=F.elu(self.fc21(T.cat((x,z),1)))
+        else:
+           x=F.elu(self.fc21(x))
+
         mu=self.fc22mu(x)
         logsigma=self.fc22logsigma(x)
         logsigma = T.clamp(logsigma, min=-20, max=2)
@@ -241,7 +277,8 @@ class ActorNetwork(nn.Module):
 
 class DemixingAgent():
     def __init__(self, gamma, lr_a, lr_c, input_dims, batch_size, n_actions,
-            max_mem_size=100, tau=0.001, n_meta=30, reward_scale=2, alpha=0.1, hint_threshold=0.1, admm_rho=1.0, name_prefix='', use_hint=False):
+            max_mem_size=100, tau=0.001, n_meta=30, reward_scale=2, alpha=0.1, hint_threshold=0.1, admm_rho=1.0, name_prefix='', use_hint=False, use_influence=False):
+        self.use_influence=use_influence
         # Note: n_meta is metadata size
         self.gamma = gamma
         self.tau=tau
@@ -249,16 +286,16 @@ class DemixingAgent():
         self.n_actions=n_actions
         # actions are always in [-1,1]
         self.max_action=1
-        self.replaymem=ReplayBuffer(max_mem_size, input_dims, n_actions, n_meta)
+        self.replaymem=ReplayBuffer(max_mem_size, input_dims, n_actions, n_meta, use_influence=self.use_influence)
     
         # online nets
         self.actor=ActorNetwork(lr_a, input_dims=input_dims, n_actions=n_actions, M=n_meta,
-                max_action=self.max_action, name=name_prefix+'a_eval')
-        self.critic_1=CriticNetwork(lr_c, input_dims=input_dims, n_actions=n_actions, M=n_meta, name=name_prefix+'q_eval_1')
-        self.critic_2=CriticNetwork(lr_c, input_dims=input_dims, n_actions=n_actions, M=n_meta, name=name_prefix+'q_eval_2')
+                max_action=self.max_action, name=name_prefix+'a_eval', use_influence=self.use_influence)
+        self.critic_1=CriticNetwork(lr_c, input_dims=input_dims, n_actions=n_actions, M=n_meta, name=name_prefix+'q_eval_1', use_influence=self.use_influence)
+        self.critic_2=CriticNetwork(lr_c, input_dims=input_dims, n_actions=n_actions, M=n_meta, name=name_prefix+'q_eval_2', use_influence=self.use_influence)
 
-        self.target_critic_1=CriticNetwork(lr_c, input_dims=input_dims, n_actions=n_actions, M=n_meta, name=name_prefix+'q_target_1')
-        self.target_critic_2=CriticNetwork(lr_c, input_dims=input_dims, n_actions=n_actions, M=n_meta, name=name_prefix+'q_target_2')
+        self.target_critic_1=CriticNetwork(lr_c, input_dims=input_dims, n_actions=n_actions, M=n_meta, name=name_prefix+'q_target_1', use_influence=self.use_influence)
+        self.target_critic_2=CriticNetwork(lr_c, input_dims=input_dims, n_actions=n_actions, M=n_meta, name=name_prefix+'q_target_2', use_influence=self.use_influence)
         # temperature
         self.alpha=T.tensor(alpha,requires_grad=False,device=mydevice)
         # reward scale
@@ -294,8 +331,12 @@ class DemixingAgent():
         self.replaymem.store_transition(state,action,reward,state_,terminal,hint)
 
     def choose_action(self, observation, evaluation_episode=False):
-        state = T.tensor(observation['infmap'].astype(np.float32),dtype=T.float32).to(mydevice)
-        state = state[None,]
+        if self.use_influence:
+           state = T.tensor(observation['infmap'].astype(np.float32),dtype=T.float32).to(mydevice)
+           state = state[None,]
+        else:
+           state=0
+
         state_sky = T.tensor(observation['metadata'].astype(np.float32),dtype=T.float32).to(mydevice)
         state_sky = state_sky[None,]
         self.actor.eval() # to disable batchnorm
@@ -311,9 +352,15 @@ class DemixingAgent():
         state, action, reward, new_state, done, hint = \
                                 self.replaymem.sample_buffer(self.batch_size)
  
-        state_batch = T.tensor(state['infmap']).to(mydevice)
+        if self.use_influence:
+           state_batch = T.tensor(state['infmap']).to(mydevice)
+        else:
+           state_batch=0
         state_batch_sky = T.tensor(state['metadata']).to(mydevice)
-        new_state_batch = T.tensor(new_state['infmap']).to(mydevice)
+        if self.use_influence:
+           new_state_batch = T.tensor(new_state['infmap']).to(mydevice)
+        else:
+           new_state_batch=0
         new_state_batch_sky = T.tensor(new_state['metadata']).to(mydevice)
         action_batch = T.tensor(action).to(mydevice)
         reward_batch = T.tensor(reward).to(mydevice).unsqueeze(1)
@@ -432,4 +479,4 @@ class DemixingAgent():
         print(self.critic_1)
 
 #a=DemixingAgent(gamma=0.99, batch_size=32, n_actions=2, n_meta=4,
-#             max_mem_size=1000, input_dims=[1,128,128], lr_a=0.001, lr_c=0.001)
+#             max_mem_size=1000, input_dims=[1,128,128], lr_a=0.001, lr_c=0.001, use_influence=False)
