@@ -17,7 +17,7 @@ Executables:
 
 - For calibration [sagecal](https://github.com/nlesc-dirac/sagecal)
 - For creation of MS [makems](https://git.astron.nl/ro/lofar/-/blob/master/CEP/MS/src/makems.cc)
-- For influence mapping [excon](https://sourceforge.net/projects/exconimager/)
+- For influence mapping [excon](https://sourceforge.net/projects/exconimager/) (not needed if *use_influence=False* is given)
 
 Python (all installable by standard methods like pip):
 pytorch, numpy, scipy, python-casacore, gymnasium, scikit-fuzzy
@@ -29,4 +29,4 @@ pytorch, numpy, scipy, python-casacore, gymnasium, scikit-fuzzy
 ## More information
 See <a href="./INTRO.md">this document</a> for more information.
 
-do 24 apr 2025 11:10:37 CEST
+ma 28 apr 2025 10:39:04 CEST
