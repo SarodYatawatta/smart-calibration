@@ -50,8 +50,8 @@ class DemixingEnv(gym.Env):
     self.n_fuzzy=20
     self.action_space = spaces.Box(low=np.ones((self.n_fuzzy,1))*(-1),high=np.ones((self.n_fuzzy,1))*(1),dtype=np.float32)
     # observation (state space): residual and influence maps
-    # metadata: separation,azimuth,elevation,log_fluxes (K values),frequency,n_stations (2 values)
-    self.n_metadata=4*self.K+2
+    # metadata: separation,azimuth,elevation,log_fluxes (K values), flag (K values) frequency,n_stations (2 values)
+    self.n_metadata=5*self.K+2
     self.observation_space = spaces.Dict({
        'infmap': spaces.Box(low=-np.inf,high=np.inf,shape=(Ninf,Ninf),dtype=np.float32),
        'metadata': spaces.Box(low=-np.inf,high=np.inf,shape=(self.n_metadata,1),dtype=np.float32)
@@ -95,7 +95,6 @@ class DemixingEnv(gym.Env):
     self.std_residual=0
     self.metadata=np.zeros(self.n_metadata,dtype=np.float32)
     self.N=1
-    self.prev_clus_id=None
     self.reward0=0
 
     self.hint=None
@@ -125,12 +124,6 @@ class DemixingEnv(gym.Env):
     else:
       self.clus_id=list()
     self.clus_id.append(self.K-1)
-    # check if current cluster selection (action) is same as previous
-    if self.prev_clus_id==self.clus_id:
-        #done=True
-        pass
-    else:
-        self.prev_clus_id=self.clus_id.copy()
     Kselected=len(self.clus_id)
     # create cluster file clusters based on clus_id indices
     self.print_clusters_()
@@ -147,10 +140,14 @@ class DemixingEnv(gym.Env):
         hdul.close()
     else:
         infdata=0
-    # metadata 0:K-1 are separations,
-    # For the directions included in calibration, set separation to 0
+    # metadata 0:4K-1 are separation,azimuth,elevation,log_flux
+    # metadata 4K:5K-1 are flags to indicate if any cluster included in calibration
+    # For the directions included in calibration
     metadata_update=self.metadata.copy()
-    metadata_update[self.clus_id]=0
+    clus_idx=np.zeros(self.K)
+    clus_idx[indices]=1
+    clus_idx[-1]=1
+    metadata_update[4*self.K:5*self.K]=clus_idx
     observation={
       'infmap': infdata*INF_SCALE,
       'metadata': metadata_update*META_SCALE }
@@ -214,6 +211,10 @@ class DemixingEnv(gym.Env):
     metadata[self.K:2*self.K]=azimuth
     metadata[2*self.K:3*self.K]=elevation
     metadata[3*self.K:4*self.K]=self.log_fluxes
+    # flag to indicate if any cluster included in calibration,
+    # intially only target
+    metadata[4*self.K:5*self.K]=0
+    metadata[5*self.K-1]=1
     metadata[-2]=freq_low
     metadata[-1]=N
     self.metadata=metadata
@@ -228,8 +229,6 @@ class DemixingEnv(gym.Env):
     observation={
       'infmap': infdata*INF_SCALE,
       'metadata': metadata*META_SCALE }
-    # remember current action taken
-    self.prev_clus_id=self.clus_id.copy()
 
     # create default fuzzy controller (to get the hint)
     self.ctrl.create_controller()

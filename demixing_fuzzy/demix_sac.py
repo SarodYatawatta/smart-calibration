@@ -237,7 +237,7 @@ class ActorNetwork(nn.Module):
         if self.use_influence:
            x=F.elu(self.fc21(T.cat((x,z),1)))
         else:
-           x=F.elu(self.fc21(x))
+           x=F.elu(self.fc21(z))
 
         mu=self.fc22mu(x)
         logsigma=self.fc22logsigma(x)

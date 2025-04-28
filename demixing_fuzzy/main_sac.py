@@ -27,6 +27,7 @@ if __name__ == '__main__':
     parser.add_argument('--steps', default=10, type=int, help='steps for each episode')
     parser.add_argument('--warmup', default=30, type=int, help='warmup episodes')
     parser.add_argument('--memory', default=30000, type=int, help='replay memory size')
+    parser.add_argument('--batch_size', default=256, type=int, help='minibatch size')
 
     args=parser.parse_args()
     np.random.seed(args.seed)
@@ -36,14 +37,15 @@ if __name__ == '__main__':
     K=6 # directions: last is the target direction, the rest are outlier sources
     # input dimensions, determined by
     Ninf=128 # influence map Ninf x Ninf
-    # metadata = (separation,azimuth,elevation,log_fluxes) K + (lowest)frequency + n_stations= 4K+2
-    n_meta=4*K+2
+    # metadata = (separation,azimuth,elevation,log_fluxes) K + K(flag) + (lowest)frequency + n_stations= 5K+2
+    # K(flag)=all zeros, 1 if that dir is included in calib
+    n_meta=5*K+2
     provide_hint=args.use_hint # to enable generation of hint from env
     env = DemixingEnv(K=K,Nf=3,Ninf=128,Npix=1024,Tdelta=10,provide_hint=provide_hint, provide_influence=args.use_influence)
     # number of variables for the fuzzy controller config
     n_fuzzy=20
     # number of actions = n_fuzzy
-    agent = DemixingAgent(gamma=0.99, batch_size=256, n_actions=n_fuzzy, tau=0.005, max_mem_size=args.memory,
+    agent = DemixingAgent(gamma=0.99, batch_size=args.batch_size, n_actions=n_fuzzy, tau=0.005, max_mem_size=args.memory,
                   input_dims=[1,Ninf,Ninf], n_meta=n_meta, lr_a=3e-4, lr_c=1e-3, alpha=0.03, hint_threshold=0.01, admm_rho=1.0, use_hint=provide_hint, use_influence=args.use_influence)
     scores=[]
     n_games = args.iteration
