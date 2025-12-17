@@ -571,11 +571,13 @@ def consensus_poly(Ne,N,freqs,f0,fidx,polytype=0,rho=0.0,alpha=0.0):
  for cf in range(Nf):
    Bi=Bi+np.outer(Bfull[cf],Bfull[cf])
 
+ # note using rho here,
  # federated averaging/spatial constraing comes in as alpha x I
- Bi=np.linalg.pinv(Bi+alpha*np.eye(Ne))
+ Bi=np.linalg.pinv(rho*Bi+alpha*np.eye(Ne))
  # select correct freq. component
  Bf=np.kron(Bfull[fidx],np.eye(2*N))
  P=np.matmul(np.kron(Bi,np.eye(2*N)),Bf.transpose())
+ # notice rho is here as well
  F=np.eye(2*N)-rho*np.matmul(Bf,P)
 
  return F,P
