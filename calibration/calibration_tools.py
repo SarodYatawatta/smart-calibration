@@ -579,6 +579,7 @@ def consensus_poly(Ne,N,freqs,f0,fidx,polytype=0,rho=0.0,alpha=0.0):
  P=np.matmul(np.kron(Bi,np.eye(2*N)),Bf.transpose())
  # notice rho is here as well
  F=np.eye(2*N)-rho*np.matmul(Bf,P)
+ # the right hand term = -rho*kron(Bfull[fidx]*Bi*Bfull[fidx]',eye(2N))
 
  return F,P
   
