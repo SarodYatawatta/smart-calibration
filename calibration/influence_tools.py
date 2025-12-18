@@ -281,6 +281,7 @@ def analysis_uvw_perdir(XX,XY,YX,YY,J,Ct,rho,freqs,freq,alpha,ra0,dec0,N,K,Ts,Td
        Htilde=H11-np.matmul(H12,np.matmul(np.linalg.pinv(H22),H21))
        Hadd[ci]=np.kron(np.eye(2),Htilde)
      else:
+       # note: this can be simplified noting that F is a diagonal matrix
        Hadd[ci]=0.5*rho[ci]*np.kron(np.eye(2),np.matmul(FF,np.eye(2*N)+np.matmul(np.linalg.pinv(np.eye(2*N)-FF),FF)))
 
 ############################# loop over timeslots

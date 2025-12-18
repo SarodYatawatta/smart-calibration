@@ -580,6 +580,7 @@ def consensus_poly(Ne,N,freqs,f0,fidx,polytype=0,rho=0.0,alpha=0.0):
  # notice rho is here as well
  F=np.eye(2*N)-rho*np.matmul(Bf,P)
  # the right hand term = -rho*kron(Bfull[fidx]*Bi*Bfull[fidx]',eye(2N))
+ # therefore, F can be simply calculated noting that it is diagonal scalar
 
  return F,P
   
