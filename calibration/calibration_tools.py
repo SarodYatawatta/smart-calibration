@@ -713,7 +713,10 @@ def Dsolutions(C,J,N,Dgrad,r):
             Ci=C[k,ck,:].reshape((2,2),order='F')
             lhs=np.matmul(J[k,2*q:2*(q+1),:],np.conj(Ci.transpose()))
             fillvex=np.matmul(np.kron(lhs.transpose(),np.eye(2)),dVpq)
-            AdV[4*p:4*(p+1),ck%B] +=fillvex
+            # rows are split to two 2*p:2*p+1 and 2*N+2*p:2*N+2*p+1
+            #not AdV[4*p:4*(p+1),ck%B] +=fillvex
+            AdV[2*p:2*(p+1),ck%B] +=fillvex[0:2]
+            AdV[2*N+2*p:2*N+2*(p+1),ck%B] +=fillvex[2:4]
             ck +=1
     
     dJ[k]=np.linalg.solve(Dgrad[k]+EPS*np.eye(4*N),AdV)
@@ -760,7 +763,10 @@ def Dsolutions_torch(C,J,N,Dgrad,r,device):
             Ci=C[k,ck,:].reshape((2,2)).transpose(0,1).contiguous()
             lhs=torch.matmul(J[k,2*q:2*(q+1),:],torch.conj(Ci.transpose(0,1).contiguous()))
             fillvex=torch.matmul(torch.kron(lhs.transpose(0,1).contiguous(),I),dVpq)
-            AdV[4*p:4*(p+1),ck%B] +=fillvex
+            # rows are split to two 2*p:2*p+1 and 2*N+2*p:2*N+2*p+1
+            #not AdV[4*p:4*(p+1),ck%B] +=fillvex
+            AdV[2*p:2*(p+1),ck%B] +=fillvex[0:2]
+            AdV[2*N+2*p:2*N+2*(p+1),ck%B] +=fillvex[2:4]
             ck +=1
     
     dJ[k]=torch.linalg.solve(Dgrad[k]+I_4N,AdV)
@@ -805,7 +811,9 @@ def Dsolutions_r(C,J,N,Dgrad):
               rr[r]=1.
               dVpq=rr[0:8:2]+1j*rr[1:8:2]
               fillvex=np.matmul(np.kron(lhs.transpose(),np.eye(2)),dVpq)
-              AdV[r,4*p:4*(p+1),ck%B] +=fillvex
+              #not AdV[r,4*p:4*(p+1),ck%B] +=fillvex
+              AdV[r,2*p:2*(p+1),ck%B] +=fillvex[0:2]
+              AdV[r,2*N+2*p:2*N+2*(p+1),ck%B] +=fillvex[2:4]
             ck +=1
     
     # iterate over r
@@ -855,7 +863,9 @@ def Dsolutions_r_torch(C,J,N,Dgrad,device):
               rr[r]=1.
               dVpq=rr[0:8:2]+1j*rr[1:8:2]
               fillvex=torch.matmul(torch.kron(lhs.transpose(0,1).contiguous(),I),dVpq)
-              AdV[r,4*p:4*(p+1),ck%B] +=fillvex
+              #not AdV[r,4*p:4*(p+1),ck%B] +=fillvex
+              AdV[r,2*p:2*(p+1),ck%B] +=fillvex[0:2]
+              AdV[r,2*N+2*p:2*N+2*(p+1),ck%B] +=fillvex[2:4]
             ck +=1
     
     # iterate over r
@@ -901,7 +911,9 @@ def Dresiduals(C,J,N,dJ,addself,r):
             Ci=C[k,ck,:].reshape((2,2),order='F')
             lhs=-np.matmul(Ci,np.conj(J[k,2*q:2*(q+1),:].transpose())).transpose()
             # kron product will fill only rows 4*(p-1)+1:4*p, column ck of dJ
-            rhs=dJ[k,4*p:4*(p+1),:]
+            # will use rows 2*p:2*(p+1) and 2*N+2*p:2*N+2*(p+1)
+            #not rhs=dJ[k,4*p:4*(p+1),:]
+            rhs=np.concatenate((dJ[k,2*p:2*(p+1),:],dJ[k,2*N+2*p:2*N+2*(p+1),:]))
             fillvex=np.matmul(np.kron(lhs,np.eye(2)),rhs)
             ck1=ck%B
             if addself:
@@ -950,7 +962,9 @@ def Dresiduals_torch(C,J,N,dJ,addself,r,device):
             Ci=C[k,ck,:].reshape((2,2)).transpose(0,1).contiguous()
             lhs=-torch.matmul(Ci,torch.conj(J[k,2*q:2*(q+1),:].transpose(0,1).contiguous())).transpose(0,1).contiguous()
             # kron product will fill only rows 4*(p-1)+1:4*p, column ck of dJ
-            rhs=dJ[k,4*p:4*(p+1),:]
+            # will use rows 2*p:2*(p+1) and 2*N+2*p:2*N+2*(p+1)
+            #not rhs=dJ[k,4*p:4*(p+1),:]
+            rhs=torch.concatenate((dJ[k,2*p:2*(p+1),:],dJ[k,2*N+2*p:2*N+2*(p+1),:]))
             fillvex=torch.matmul(torch.kron(lhs,I),rhs)
             ck1=ck%B
             if addself:
@@ -997,7 +1011,8 @@ def Dresiduals_k(C,J,N,dJ,addself,r):
             Ci=C[k,ck,:].reshape((2,2),order='F')
             lhs=-np.matmul(Ci,np.conj(J[k,2*q:2*(q+1),:].transpose())).transpose()
             # kron product will fill only rows 4*(p-1)+1:4*p, column ck of dJ
-            rhs=dJ[k,4*p:4*(p+1),:]
+            #not rhs=dJ[k,4*p:4*(p+1),:]
+            rhs=np.concatenate((dJ[k,2*p:2*(p+1),:],dJ[k,2*N+2*p:2*N+2*(p+1),:]))
             fillvex=np.matmul(np.kron(lhs,np.eye(2)),rhs)
             ck1=ck%B
             if addself:
@@ -1042,7 +1057,8 @@ def Dresiduals_r(C,J,N,dJ,addself):
             lhs=-np.matmul(Ci,np.conj(J[k,2*q:2*(q+1),:].transpose())).transpose()
             # kron product will fill only rows 4*(p-1)+1:4*p, column ck of dJ
             for r in range(8):
-              rhs=dJ[r,k,4*p:4*(p+1),:]
+              #not rhs=dJ[r,k,4*p:4*(p+1),:]
+              rhs=np.concatenate((dJ[r,k,2*p:2*(p+1),:],dJ[r,k,2*N+2*p:2*N+2*(p+1),:]))
 
               fillvex=np.matmul(np.kron(lhs,np.eye(2)),rhs)
               ck1=ck%B
@@ -1092,7 +1108,8 @@ def Dresiduals_r_torch(C,J,N,dJ,addself,device):
             lhs=-torch.matmul(Ci,torch.conj(J[k,2*q:2*(q+1),:].transpose(0,1).contiguous())).transpose(0,1).contiguous()
             # kron product will fill only rows 4*(p-1)+1:4*p, column ck of dJ
             for r in range(8):
-              rhs=dJ[r,k,4*p:4*(p+1),:]
+              #not rhs=dJ[r,k,4*p:4*(p+1),:]
+              rhs=torch.concatenate((dJ[r,k,2*p:2*(p+1),:],dJ[r,k,2*N+2*p:2*N+2*(p+1),:]))
 
               fillvex=torch.matmul(torch.kron(lhs,I),rhs)
               ck1=ck%B
@@ -1141,7 +1158,8 @@ def Dresiduals_rk(C,J,N,dJ,addself):
             lhs=-np.matmul(Ci,np.conj(J[k,2*q:2*(q+1),:].transpose())).transpose()
             # kron product will fill only rows 4*(p-1)+1:4*p, column ck of dJ
             for r in range(8):
-              rhs=dJ[r,k,4*p:4*(p+1),:]
+              #not rhs=dJ[r,k,4*p:4*(p+1),:]
+              rhs=np.concatenate((dJ[r,k,2*p:2*(p+1),:],dJ[r,k,2*N+2*p:2*N+2*(p+1),:]))
 
               fillvex=np.matmul(np.kron(lhs,np.eye(2)),rhs)
               ck1=ck%B
