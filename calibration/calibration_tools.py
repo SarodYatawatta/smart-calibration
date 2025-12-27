@@ -1257,7 +1257,7 @@ def generate_random_shapelet_model(filename,ra_hh,ra_mm,ra_ss,dec_deg,dec_mm,dec
   # number of modes in [10,20]
   n0=np.random.randint(10,20)
   # scale in [0,1)*0.1+0.05
-  beta=np.random.random_sample(1)[0]+0.01
+  beta=np.random.random_sample(1)[0]+0.1
   # if scale too high, select one such that n0*beta ~ 2 
   if beta*n0 > 2:
       beta = (2 + np.random.random_sample(1)[0]*0.001)/n0
