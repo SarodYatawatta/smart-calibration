@@ -46,7 +46,7 @@ if __name__ == '__main__':
     n_fuzzy=20
     # number of actions = n_fuzzy
     agent = DemixingAgent(gamma=0.99, batch_size=args.batch_size, n_actions=n_fuzzy, tau=0.005, max_mem_size=args.memory,
-                  input_dims=[1,Ninf,Ninf], n_meta=n_meta, lr_a=3e-4, lr_c=1e-3, alpha=0.03, hint_threshold=0.01, admm_rho=1.0, use_hint=provide_hint, use_influence=args.use_influence)
+                  input_dims=[1,Ninf,Ninf], n_meta=n_meta, lr_a=3e-4, lr_c=1e-4, alpha=0.03, hint_threshold=0.01, admm_rho=1.0, use_hint=provide_hint, use_influence=args.use_influence)
     scores=[]
     n_games = args.iteration
 
