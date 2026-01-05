@@ -43,7 +43,7 @@ class DemixingEnv(gym.Env):
   # reward: decrease in residual/number of directions demixed + influence map penalty
   # Ninf=influence map dimensions NinfxNinf (set in doinfluence.sh)
   # Npix=residual map dimension Npix x Npix
-  def __init__(self, K=2, Nf=3, Ninf=128, Npix=1024, Tdelta=10, provide_hint=False):
+  def __init__(self, K=2, Nf=3, Ninf=128, Npix=1024, Tdelta=10, provide_hint=False, provide_influence=False):
     super(DemixingEnv, self).__init__()
     # Define action and observation space
     # action space dim=number of outlier clusters=vector (K-1)x1, K: number of directions + 1 for max ADMM iterations
@@ -99,6 +99,8 @@ class DemixingEnv(gym.Env):
     self.provide_hint=provide_hint
     self.tau=100 # temperature, divide AIC by 1/tau before softmin()
 
+    self.provide_influence=provide_influence
+
   def step(self, action):
     # action : Kx1, 0,1,..,K-2 : direction probabilities, 
     # K-1: max ADMM iteration (scaled)
@@ -127,11 +129,14 @@ class DemixingEnv(gym.Env):
     sb.run('mpirun -np 3 --oversubscribe '+generate_data.sagecal_mpi+' -f \'L_SB*.MS\'  -A '+str(self.maxiter)+' -P 2 -s sky.txt -c '+self.cluster+' -I DATA -O MODEL_DATA -p zsol -G '+self.out_admm_rho+' -n 4 -t '+str(self.Tdelta)+' -E 1 > calibration.out',shell=True)
 
     # calculate influence (update the command)
-    sb.run(self.cmd_calc_influence,shell=True)
-    hdul = fits.open('./influenceI.fits')
-    infdata=hdul[0].data[0,:,:,:]
-    infdata=infdata.astype(np.float32)
-    hdul.close()
+    if self.provide_influence:
+        sb.run(self.cmd_calc_influence,shell=True)
+        hdul = fits.open('./influenceI.fits')
+        infdata=hdul[0].data[0,:,:,:]
+        infdata=infdata.astype(np.float32)
+        hdul.close()
+    else:
+        infdata=np.zeros((1,self.Ninf,self.Ninf))
     # metadata 0:K-1 are separations,
     # For the directions included in calibration, set separation to 0
     metadata_update=self.metadata.copy()
@@ -195,10 +200,13 @@ class DemixingEnv(gym.Env):
     metadata[-2]=freq_low
     metadata[-1]=N
     self.metadata=metadata
-    hdul = fits.open('./influenceI.fits')
-    infdata=hdul[0].data[0,:,:,:]
-    infdata=infdata.astype(np.float32)
-    hdul.close()
+    if self.provide_influence:
+        hdul = fits.open('./influenceI.fits')
+        infdata=hdul[0].data[0,:,:,:]
+        infdata=infdata.astype(np.float32)
+        hdul.close()
+    else:
+        infdata=np.zeros((1,self.Ninf,self.Ninf))
     observation={
       'infmap': infdata*INF_SCALE,
       'metadata': metadata*META_SCALE }
