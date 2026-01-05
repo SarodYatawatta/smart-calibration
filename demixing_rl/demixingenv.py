@@ -29,7 +29,7 @@ HIGH_iter=30
 
 # scaling of input data to prevent saturation
 INF_SCALE=1e-3
-META_SCALE=1e-5
+META_SCALE=1e-3
 
 EPS=0.01 # to make 1/(x+EPS) when x->0 not explode
 
@@ -38,7 +38,7 @@ class DemixingEnv(gym.Env):
   metadata = {'render.modes': ['human']}
 
   # K=number of directions (target+outliers)
-  # state(observation): sep,az,el(all K),freq,target influence map
+  # state(observation): sep,az,el(all K),log(freq),stations, and target influence map
   # residual map: use to calculate reward, influence map: feed to network
   # reward: decrease in residual/number of directions demixed + influence map penalty
   # Ninf=influence map dimensions NinfxNinf (set in doinfluence.sh)
@@ -197,7 +197,7 @@ class DemixingEnv(gym.Env):
     metadata[:self.K]=separation
     metadata[self.K:2*self.K]=azimuth
     metadata[2*self.K:3*self.K]=elevation
-    metadata[-2]=freq_low
+    metadata[-2]=np.log(freq_low)
     metadata[-1]=N
     self.metadata=metadata
     if self.provide_influence:
