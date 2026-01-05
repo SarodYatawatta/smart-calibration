@@ -185,8 +185,9 @@ class DemixingEnv(gym.Env):
     sb.run('mpirun -np 3 --oversubscribe '+generate_data.sagecal_mpi+' -f \'L_SB*.MS\'  -A '+str(self.maxiter)+' -P 2 -s sky.txt -c '+self.cluster+' -I DATA -O MODEL_DATA -p zsol -G '+self.out_admm_rho+' -n 4 -t '+str(self.Tdelta)+' -E 1 > calibration.out',shell=True)
 
     # calculate influence (image at ./influenceI.fits)
-    self.cmd_calc_influence='./doinfluence.sh '+str(self.freq_low)+' '+str(self.freq_high)+' '+str(self.ra0)+' '+str(self.dec0)+' '+str(self.Tdelta)+' > influence.out'
-    sb.run(self.cmd_calc_influence,shell=True)
+    self.cmd_calc_influence='./doinfluence.sh'+' > influence.out'
+    if self.provide_influence:
+       sb.run(self.cmd_calc_influence,shell=True)
     self.std_data=self.get_noise_(col='DATA')
     self.std_residual=self.get_noise_(col='MODEL_DATA')
 
