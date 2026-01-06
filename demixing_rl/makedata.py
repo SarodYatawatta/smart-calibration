@@ -10,8 +10,8 @@ Ninf=128
 M=3*K+2
 # number of samples to collect (buffer size)
 n_samples=3000
-# cadence to save buffer
-n_cadence=100
+# number of iterations to make data
+n_iter=40
 
 #metadata: separation,az,el ( x K),log(freq),stations
 #metadata scaling factor
@@ -20,13 +20,18 @@ env = DemixingEnv(K=K,Nf=3,Ninf=128,Npix=1024,Tdelta=10,provide_hint=True, provi
 
 # we do not include target as an output, n_output=K-1
 buffer=TrainingBuffer(n_samples,n_input=M,n_output=K-1)
-for ci in range(n_samples):
+# load already exisiting file (note: size of buffer will be 
+# determined by the loaded file)
+#buffer.load_checkpoint()
+
+for ci in range(n_iter):
    observation = env.reset()
    hint=env.get_hint()
    x=observation['metadata']
    y=hint[:-1]
    buffer.store_observation(x,y)
-   if ci>0 and ci%n_cadence==0:
-     buffer.save_checkpoint()
+   # always save buffer after each iteration
+   buffer.save_checkpoint()
+   print(f'Iteration {ci}/{n_iter}')
 
 buffer.save_checkpoint()
