@@ -90,18 +90,25 @@ def gather_flat_parameters(parameters):
 # Output y = model(x)
 # model parameters are theta, stored internally
 # opt: LBFGS optimizer, re-used for inverse Hessian
-def influence_matrix(model,xinput,youtput,opt=None):
+# override_input: if True, use provided input (instead of all ones)
+def influence_matrix(model,xinput,youtput,opt=None,override_input=False):
  # xinput: x (input)
  # youtput: y (output)
  
  # pass all ones input via the model
- x=torch.ones(xinput.shape,requires_grad=True).to(mydevice)
+ if override_input:
+     x=xinput.detach().clone().requires_grad_(True).to(mydevice)
+ else:
+     x=torch.ones(xinput.shape,requires_grad=True).to(mydevice)
  # vectorize
  N=x.view(-1).shape[0]
  M=youtput.view(-1).shape[0]
 
  # labels: vector of 1
- labels=torch.ones_like(youtput).to(mydevice)
+ if override_input:
+     labels=youtput
+ else:
+     labels=torch.ones_like(youtput).to(mydevice)
 
  criterion=torch.nn.MSELoss()
  def l2loss(ytrue,xin):
