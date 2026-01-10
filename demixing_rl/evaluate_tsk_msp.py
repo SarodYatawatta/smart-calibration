@@ -26,10 +26,11 @@ M=3*K+2
 # number of samples to collect (buffer size)
 n_samples=3
 
-n_iter=8000
+n_iter=10
 
 env = DemixingEnv(K=K,Nf=3,Ninf=128,Npix=1024,Tdelta=10,provide_hint=True, provide_influence=False)
 
+# Multilayer perceptron
 net=RegressorNet(n_input=M,n_output=K-1,n_hidden=32,name='test')
 net.load_checkpoint()
 net.eval()
@@ -58,26 +59,31 @@ model.load_state_dict(torch.load('tsk.model'))
 model.eval()
 model.to(mydevice)
 
+rewards=np.zeros((n_iter,3))
+for ci in range(n_iter):
+    observation = env.reset()
+    x=observation['metadata'].copy()
+    x=x[None,]
+    xt=torch.tensor(x).to(mydevice)
+    y=net(xt)
+    action=np.zeros(K)
+    action[:-1]=y.detach().cpu().numpy()
+    observation_, reward, done, hint, info = env.step(action)
+    xt=torch.tensor(x).to(mydevice)
+    y=model(xt)
+    action1=np.zeros(K)
+    action1[:-1]=y.detach().cpu().numpy()
+    observation_, reward1, done, hint, info = env.step(action1)
+    observation_, reward2, done, hint, info = env.step(hint)
+    print(action)
+    print(reward)
+    print(action1)
+    print(reward1)
+    print(hint)
+    print(reward2)
+    rewards[ci,0]=reward
+    rewards[ci,1]=reward1
+    rewards[ci,2]=reward2
 
-observation = env.reset()
-x=observation['metadata'].copy()
-x=x[None,]
-print(observation)
-xt=torch.tensor(x).to(mydevice)
-y=net(xt)
-action=np.zeros(K)
-action[:-1]=y.detach().cpu().numpy()
-observation_, reward, done, hint, info = env.step(action)
-xt=torch.tensor(x).to(mydevice)
-y=model(xt)
-action1=np.zeros(K)
-action1[:-1]=y.detach().cpu().numpy()
-observation_, reward1, done, hint, info = env.step(action1)
-observation_, reward2, done, hint, info = env.step(hint)
-print(action)
-print(reward)
-print(action1)
-print(reward1)
-print(hint)
-print(reward2)
-
+with open('rewards.pkl','wb') as f:
+    pickle.dump(rewards,f)
