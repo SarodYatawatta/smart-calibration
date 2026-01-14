@@ -216,8 +216,10 @@ class DemixController:
         rule10 = fcontrol.Rule(elevation_target['low'] & elevation['high'], priority['high'])
         # target high, outlier low
         rule11 = fcontrol.Rule(elevation_target['high'] & elevation['low'], priority['low'])
+        # target medium elevation, outlier high
+        rule12 = fcontrol.Rule(elevation_target['medium'] & elevation['high'], priority['medium'])
 
-        system=fcontrol.ControlSystem([rule0,rule1,rule2,rule3,rule4,rule5,rule6,rule7,rule8,rule9,rule10,rule11])
+        system=fcontrol.ControlSystem([rule0,rule1,rule2,rule3,rule4,rule5,rule6,rule7,rule8,rule9,rule10,rule11,rule12])
         # Flush cache after ~ n_directions evaluations
         self.fuzzy_ctrl=fcontrol.ControlSystemSimulation(system,flush_after_run=7)
 
