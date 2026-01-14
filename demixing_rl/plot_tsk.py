@@ -46,19 +46,30 @@ parameter_dict={}
 for n,p in model.named_parameters():
     parameter_dict[n]=p.detach().numpy()
     print(n)
-    print(p)
+    print(p.shape)
 
 weights=parameter_dict['0.antecedent.1.weight']
 bias=parameter_dict['0.antecedent.1.bias']
 import matplotlib.pyplot as plt
-n_inputs=20
+n_inputs=6
+# each column : seperation,az,el (xK), log(freq), n_stations
+ylabels=['CasA','CygA','HerA','TauA','VirA','Target']
+
 fig,axs=plt.subplots(n_inputs)
 x=np.arange(-3,3,0.1)
+#fig.suptitle('Separation')
+#fig.suptitle('Azimuth')
+fig.suptitle('Elevation')
+#fig.suptitle('Freq,Stations')
+
 for which_input in range(n_inputs):
-   centers=parameter_dict['0.antecedent.0.center'][which_input]
-   sigmas=parameter_dict['0.antecedent.0.sigma'][which_input]
+   centers=parameter_dict['0.antecedent.0.center'][2*K+which_input]
+   sigmas=parameter_dict['0.antecedent.0.sigma'][2*K+which_input]
    for rule in range(n_rule):
       y=weights[rule]*np.exp(-(x-centers[rule])**2/(2*sigmas[rule]**2))#+bias[rule]
       axs[which_input].plot(x,y)
+      axs[which_input].set_ylabel(ylabels[which_input])
+
+axs[-1].set_xlabel('Fuzzy GMF range')
 
 plt.savefig('foo.png')
