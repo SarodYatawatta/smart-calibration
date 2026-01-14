@@ -47,7 +47,8 @@ if __name__ == '__main__':
     provide_hint=args.use_hint # to enable generation of hint from env
     env = DemixingEnv(K=K,Nf=3,Ninf=128,Npix=1024,Tdelta=10,provide_hint=provide_hint, provide_influence=args.use_influence)
     # number of variables for the fuzzy controller config
-    n_fuzzy=20
+    # for all directions
+    n_fuzzy=24*(K-1)+8
     # number of actions = n_fuzzy
     agent = DemixingAgent(gamma=0.99, batch_size=args.batch_size, n_actions=n_fuzzy, tau=0.005, max_mem_size=args.memory,
                   input_dims=[1,Ninf,Ninf], n_meta=n_meta, lr_a=lr_actor, lr_c=lr_critic, alpha=0.03, hint_threshold=0.01, admm_rho=1.0, use_hint=provide_hint, use_influence=args.use_influence)
