@@ -41,16 +41,17 @@ class DemixingEnv(gym.Env):
   def __init__(self, K=2, Nf=3, Ninf=128, Npix=1024, Tdelta=10, provide_hint=False, provide_influence=False):
     super(DemixingEnv, self).__init__()
     # Define action and observation space
-    # action space dim=number of outlier clusters=vector (K-1)x1, K: number of directions + 1 for max ADMM iterations
+    # action space dim=number of outlier clusters and target
     self.K=K
     self.provide_influence=provide_influence
     self.Ninf=Ninf
     self.Npix=Npix
-    # actions: 20 each in [-1,1]
-    self.n_fuzzy=20
-    self.action_space = spaces.Box(low=np.ones((self.n_fuzzy,1))*(-1),high=np.ones((self.n_fuzzy,1))*(1),dtype=np.float32)
+    # actions (in [-1,1]) : 24 for each outlier, 8 for target
+    self.n_fuzzy=32# for each direction
+    self.n_action=24*(self.K-1)+8 # total directions
+    self.action_space = spaces.Box(low=np.ones((self.n_action,1))*(-1),high=np.ones((self.n_action,1))*(1),dtype=np.float32)
     # observation (state space): residual and influence maps
-    # metadata: separation,azimuth,elevation,log_fluxes (K values), flag (K values) frequency,n_stations (2 values)
+    # metadata: separation,azimuth,elevation,log_fluxes (K values), flag indicating selection (K values) frequency,n_stations (2 values)
     self.n_metadata=5*self.K+2
     self.observation_space = spaces.Dict({
        'infmap': spaces.Box(low=-np.inf,high=np.inf,shape=(Ninf,Ninf),dtype=np.float32),
@@ -106,17 +107,26 @@ class DemixingEnv(gym.Env):
 
   def step(self, action):
     # action: fuzzy set boundaries, prioriy cutoff for being selected
-    # action : self.n_fuzzy x 1: in [-1,1] 
+    # action : self.n_action x 1: in [-1,1] 
     # map from [-1,1] to [0,1]
     action_scaled=action*0.5+0.5
     done=False # make sure to return True at some point
-    # update fuzzy controller based on action
-    self.ctrl.update_limits(action_scaled)
-    self.ctrl.create_controller()
-    # evaluate sky using controller
     flux_ratio=np.exp(self.log_fluxes)/self.target_flux
-    priority=self.ctrl.evaluate(self.elevation,self.separation,self.log_fluxes,flux_ratio)
-    priority_cutoff=self.ctrl.get_high_priority()
+    priority=np.zeros(self.K-1)
+    priority_cutoff=np.zeros(self.K-1)
+    # iterate over each outlier
+    for ndir in range(self.K-1):
+       # assemble action
+       a=np.zeros(self.n_fuzzy)
+       a[:24]=action_scaled[ndir*24:(ndir+1)*24]
+       a[-8:]=action_scaled[-8:]
+       # update fuzzy controller based on action
+       self.ctrl.update_limits(a)
+       self.ctrl.create_controller()
+       # evaluate sky using controller
+       priority[ndir]=self.ctrl.evaluate(self.azimuth[ndir],self.azimuth[-1],self.elevation[ndir],self.elevation[-1],self.separation[ndir],self.log_fluxes[ndir],flux_ratio[ndir])
+       priority_cutoff[ndir]=self.ctrl.get_high_priority()
+
     # find indices of selected directions
     indices=np.where(priority >= priority_cutoff)
     if len(indices) > 0:
@@ -172,6 +182,7 @@ class DemixingEnv(gym.Env):
     separation,azimuth,elevation,freq_low,freq_high,ra0,dec0,N,fluxes=simulate_data(Nf=self.Nf)
     # remember stations
     self.N=N
+    self.azimuth=azimuth
     self.elevation=elevation
     self.separation=separation
     self.log_fluxes=np.log(fluxes)
@@ -310,8 +321,13 @@ class DemixingEnv(gym.Env):
     fh.close()
 
   def get_hint(self):
-    # Hint is just the default fuzzy config converted to an action
-    hint_full=self.ctrl.update_action()
+    # Hint is just the default fuzzy config (self.n_fuzzy) converted to an action,
+    # replicated to fill 24*K-1+8
+    hint_full=np.zeros(self.n_action)
+    hint=self.ctrl.update_action()
+    for ndir in range(self.K-1):
+        hint_full[24*ndir:24*(ndir+1)]=hint[:24]
+    hint_full[-8:]=hint[-8:]
     # map from [0,1] to [-1,1]
     return 2.0*(hint_full-0.5)
 
@@ -347,23 +363,13 @@ class DemixingEnv(gym.Env):
        MS='L_SB'+str(ci)+'.MS'
        sb.run('rm -rf '+MS,shell=True)
 
-#dem=DemixingEnv(K=6,Nf=3,Ninf=128,Npix=1024,Tdelta=10)
+#dem=DemixingEnv(K=6,Nf=3,Ninf=128,Npix=1024,Tdelta=10,provide_influence=True)
 #obs=dem.reset()
 #hint=dem.hint
 #sb.run('mv influenceI.fits inf0.fits',shell=True)
-#action=hint#2*(np.random.rand(20)-0.5)
+#action=hint
 #obs,reward,_,_=dem.step(action=action)
 #sb.run('mv influenceI.fits inf1.fits',shell=True)
-#action=2*(np.random.rand(20)-0.5)
-#action[-1]=1
-#obs,reward,_,_=dem.step(action=action)
-#sb.run('mv influenceI.fits inf2.fits',shell=True)
-#action[2]=1
-#obs,reward,_,_=dem.step(action=action)
-#sb.run('mv influenceI.fits inf3.fits',shell=True)
-#action[3]=1
-#obs,reward,_,_=dem.step(action=action)
-#sb.run('mv influenceI.fits inf4.fits',shell=True)
 #action[4]=1
 #obs,reward,_,_=dem.step(action=action)
 #sb.run('mv influenceI.fits inf5.fits',shell=True)
