@@ -192,17 +192,29 @@ class DemixController:
                   var[term] = fuzz.trapmf(var.universe, limits)
 
         # Define fuzzy rules - see the documentation for further explanation
+        # match outlier and target in azimuth (probably proximity is close)
         rule0 = fcontrol.Rule(azimuth['low'] & azimuth_target['low'], priority['medium'])
         rule1 = fcontrol.Rule(azimuth['medium'] & azimuth_target['medium'], priority['medium'])
         rule2 = fcontrol.Rule(azimuth['high'] & azimuth_target['high'], priority['medium'])
+
+        # low angular separation
         rule3 = fcontrol.Rule(separation['low'], priority['high'])
+        # high angular separation
         rule4 = fcontrol.Rule(elevation['low'], priority['low'])
+
+        # weak outlier, low elevation and far away from target
         rule5 = fcontrol.Rule(elevation['low'] & separation['high'] & log_intensity['low'] & intensity_ratio['low'], priority['low'])
+        # average outlier
         rule6 = fcontrol.Rule(elevation['medium'] &  separation['medium'] & intensity_ratio['high'], priority['medium'])
+        # bright outlier at high elevation
         rule7 = fcontrol.Rule(elevation['high'] & separation['medium'] & intensity_ratio['high'], priority['high'])
+        # bright outlier at high elevation
         rule8 = fcontrol.Rule(elevation['high'] & log_intensity['high'] & intensity_ratio['high'], priority['high'])
+        # average outlier
         rule9 = fcontrol.Rule(elevation['medium'] | separation['medium'] | log_intensity['medium'] | intensity_ratio['medium'], priority['medium'])
+        # target low, outlier high
         rule10 = fcontrol.Rule(elevation_target['low'] & elevation['high'], priority['high'])
+        # target high, outlier low
         rule11 = fcontrol.Rule(elevation_target['high'] & elevation['low'], priority['low'])
 
         system=fcontrol.ControlSystem([rule0,rule1,rule2,rule3,rule4,rule5,rule6,rule7,rule8,rule9,rule10,rule11])
