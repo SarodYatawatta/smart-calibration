@@ -23,7 +23,7 @@ else:
 
 # scaling of input data to prevent saturation
 INF_SCALE=1e-3
-META_SCALE=1e-5
+META_SCALE=1e-3
 
 EPS=0.01 # to make 1/(x+EPS) when x->0 not explode
 
@@ -32,7 +32,7 @@ class DemixingEnv(gym.Env):
   metadata = {'render.modes': ['human']}
 
   # K=number of directions (target+outliers)
-  # state(observation): sep,az,el(all K),freq,target influence map (if enabled)
+  # state(observation): sep,az,el(all K),log(freq),stations, and target influence map (if enabled)
   # residual map: use to calculate reward, influence map: feed to network
   # reward: decrease in residual/number of directions demixed + influence map penalty
   # Ninf=influence map dimensions NinfxNinf (set in doinfluence.sh)
@@ -51,7 +51,7 @@ class DemixingEnv(gym.Env):
     self.n_action=24*(self.K-1)+8 # total directions
     self.action_space = spaces.Box(low=np.ones((self.n_action,1))*(-1),high=np.ones((self.n_action,1))*(1),dtype=np.float32)
     # observation (state space): residual and influence maps
-    # metadata: separation,azimuth,elevation,log_fluxes (K values), flag indicating selection (K values) frequency,n_stations (2 values)
+    # metadata: separation,azimuth,elevation,log_fluxes (K values), flag indicating selection (K values), log(frequency), n_stations (2 values)
     self.n_metadata=5*self.K+2
     self.observation_space = spaces.Dict({
        'infmap': spaces.Box(low=-np.inf,high=np.inf,shape=(Ninf,Ninf),dtype=np.float32),
@@ -208,7 +208,7 @@ class DemixingEnv(gym.Env):
 
     if self.provide_influence:
        # calculate influence (image at ./influenceI.fits)
-       self.cmd_calc_influence='./doinfluence.sh '+str(self.freq_low)+' '+str(self.freq_high)+' '+str(self.ra0)+' '+str(self.dec0)+' '+str(self.Tdelta)+' > influence.out'
+       self.cmd_calc_influence='./doinfluence.sh'+' > influence.out'
        sb.run(self.cmd_calc_influence,shell=True)
 
     self.std_data=self.get_noise_(col='DATA')
@@ -226,7 +226,7 @@ class DemixingEnv(gym.Env):
     # intially only target
     metadata[4*self.K:5*self.K]=0
     metadata[5*self.K-1]=1
-    metadata[-2]=freq_low
+    metadata[-2]=np.log(freq_low)
     metadata[-1]=N
     self.metadata=metadata
     if self.provide_influence:
