@@ -55,21 +55,80 @@ n_inputs=6
 # each column : seperation,az,el (xK), log(freq), n_stations
 ylabels=['CasA','CygA','HerA','TauA','VirA','Target']
 
-fig,axs=plt.subplots(n_inputs)
-x=np.arange(-3,3,0.1)
-#fig.suptitle('Separation')
-#fig.suptitle('Azimuth')
-fig.suptitle('Elevation')
-#fig.suptitle('Freq,Stations')
+META_SCALE=1e3
+xmean=np.zeros(M,dtype=np.float32)
+xmean[0:5]=64
+xmean[12:18]=30
+xmean[18]=20
+xmean[19]=50
+x=(np.arange(-0.3,0.3,0.001))*META_SCALE
 
-for which_input in range(n_inputs):
-   centers=parameter_dict['0.antecedent.0.center'][2*K+which_input]
-   sigmas=parameter_dict['0.antecedent.0.sigma'][2*K+which_input]
+fig,axs=plt.subplots(n_inputs,sharex=True)
+fig.suptitle('Separation')
+
+for which_input in range(6):
+   centers=parameter_dict['0.antecedent.0.center'][which_input]
+   sigmas=parameter_dict['0.antecedent.0.sigma'][which_input]
    for rule in range(n_rule):
-      y=weights[rule]*np.exp(-(x-centers[rule])**2/(2*sigmas[rule]**2))#+bias[rule]
-      axs[which_input].plot(x,y)
-      axs[which_input].set_ylabel(ylabels[which_input])
+      y=np.exp(-((x/META_SCALE)-centers[rule])**2/(2*sigmas[rule]**2))
+      axs[which_input%6].plot(x+xmean[which_input],y)
+      axs[which_input%6].set_ylabel(ylabels[which_input%6])
+      axs[which_input%6].grid(1)
 
-axs[-1].set_xlabel('Fuzzy GMF range')
+axs[-1].set_xlabel('Degrees')
+plt.savefig('gmf_separation.png')
+fig.clf()
 
-plt.savefig('foo.png')
+fig,axs=plt.subplots(n_inputs,sharex=True)
+fig.suptitle('Azimuth')
+
+for which_input in range(6,12):
+   centers=parameter_dict['0.antecedent.0.center'][which_input]
+   sigmas=parameter_dict['0.antecedent.0.sigma'][which_input]
+   for rule in range(n_rule):
+      y=np.exp(-((x/META_SCALE)-centers[rule])**2/(2*sigmas[rule]**2))
+      axs[which_input%6].plot(x+xmean[which_input],y)
+      axs[which_input%6].set_ylabel(ylabels[which_input%6])
+      axs[which_input%6].grid(1)
+
+axs[-1].set_xlabel('Degrees')
+plt.savefig('gmf_azimuth.png')
+
+fig.clf()
+
+fig,axs=plt.subplots(n_inputs,sharex=True)
+fig.suptitle('Elevation')
+
+for which_input in range(12,18):
+   centers=parameter_dict['0.antecedent.0.center'][which_input]
+   sigmas=parameter_dict['0.antecedent.0.sigma'][which_input]
+   for rule in range(n_rule):
+      y=np.exp(-((x/META_SCALE)-centers[rule])**2/(2*sigmas[rule]**2))
+      axs[which_input%6].plot(x+xmean[which_input],y)
+      axs[which_input%6].set_ylabel(ylabels[which_input%6])
+      axs[which_input%6].grid(1)
+
+axs[-1].set_xlabel('Degrees')
+plt.savefig('gmf_elevation.png')
+
+fig.clf()
+
+fig,axs=plt.subplots(2,sharex=False)
+fig.suptitle('Frequency and Stations')
+
+ylabels=['log(Frequency)','Stations']
+for which_input in range(18,20):
+   centers=parameter_dict['0.antecedent.0.center'][which_input]
+   sigmas=parameter_dict['0.antecedent.0.sigma'][which_input]
+   for rule in range(n_rule):
+      y=np.exp(-((x/META_SCALE)-centers[rule])**2/(2*sigmas[rule]**2))
+      if which_input==18:
+         axs[which_input%2].plot(x+xmean[which_input],y)
+      else:
+         axs[which_input%2].plot(x+xmean[which_input],y)
+      axs[which_input%2].set_xlabel(ylabels[which_input%2])
+      axs[which_input%2].grid(1)
+
+plt.savefig('gmf_freq_stat.png')
+
+fig.clf()

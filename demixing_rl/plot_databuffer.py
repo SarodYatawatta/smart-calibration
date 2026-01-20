@@ -23,6 +23,7 @@ ylabels=['CasA','CygA','HerA','TauA','VirA','Target']
 # sources: CasA, CygA, HerA, TauA, VirA, target
 X=buffer.x_[:buffer.mem_cntr]
 print(X.shape)
+print(np.mean(X,axis=0)/META_SCALE)
 y=buffer.y_[:buffer.mem_cntr]
 print(y.shape)
 
