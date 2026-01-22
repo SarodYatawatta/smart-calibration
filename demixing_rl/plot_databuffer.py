@@ -31,11 +31,11 @@ import matplotlib.pyplot as plt
 n_directions=K
 fig,axs=plt.subplots(n_directions)
 # separation, azimuth, elevation
-fig.suptitle('Separation/deg')
-#fig.suptitle('Azimuth/deg')
+#fig.suptitle('Separation/deg')
+fig.suptitle('Azimuth/deg')
 #fig.suptitle('Elevation/deg')
 for dir_id in range(n_directions):
-    x=X[:,0*K+dir_id]/META_SCALE # 0*K, 1*K or 2*K
+    x=X[:,1*K+dir_id]/META_SCALE # 0*K, 1*K or 2*K
     axs[dir_id].plot(x,'.')
     axs[dir_id].set_ylabel(ylabels[dir_id])
 axs[-1].set_xlabel('Simulation number')

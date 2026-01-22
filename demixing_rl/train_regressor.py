@@ -23,7 +23,7 @@ M=3*K+2
 n_samples=3
 
 batch_size=256
-n_iter=8000
+n_iter=20000
 lr=0.01
 
 # we do not include target as an output, n_output=K-1
@@ -46,6 +46,20 @@ def loss_function(x,y):
     return loss
 
 
+def test_loss():
+   loss=0
+   for batch in range(x_test.shape[0]):
+      x,y=x_test[batch],y_test[batch]
+      xt=torch.tensor(x[None,],requires_grad=False).to(mydevice)
+      yt=torch.tensor(y).to(mydevice)
+      yout=net(xt)
+      loss+=loss_function(yt,yout)
+
+   loss /= x_test.shape[0]
+
+   return loss.data.item()
+
+
 for ci in range(n_iter):
    batch=np.random.choice(x_train.shape[0],batch_size,replace=False)
    x=x_train[batch]
@@ -60,22 +74,11 @@ for ci in range(n_iter):
     loss=loss_function(yt,yout)
     if loss.requires_grad:
       loss.backward()
-    print(loss.data.item())
     return loss
 
    optimizer.step(closure)
+   error=loss_function(yt,net(xt))/batch_size
+   print(f'{ci} {error.data.item()} {test_loss()}')
+
 
 net.save_checkpoint()
-
-batch=np.random.choice(x_test.shape[0],2,replace=False)
-x,y=x_test[batch],y_test[batch]
-xt=torch.tensor(x,requires_grad=True).to(mydevice)
-yout=net(xt)
-yout=yout.detach().cpu().numpy()
-print(x)
-print(y)
-print(yout)
-
-for n,p in net.named_parameters():
-    print(n)
-    print(p.shape)

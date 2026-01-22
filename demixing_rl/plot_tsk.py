@@ -63,7 +63,7 @@ xmean[18]=20
 xmean[19]=50
 x=(np.arange(-0.3,0.3,0.001))*META_SCALE
 
-fig,axs=plt.subplots(n_inputs,sharex=True)
+fig,axs=plt.subplots(n_inputs,sharex=True,sharey=True)
 fig.suptitle('Separation')
 
 for which_input in range(6):
@@ -79,7 +79,7 @@ axs[-1].set_xlabel('Degrees')
 plt.savefig('gmf_separation.png')
 fig.clf()
 
-fig,axs=plt.subplots(n_inputs,sharex=True)
+fig,axs=plt.subplots(n_inputs,sharex=True,sharey=True)
 fig.suptitle('Azimuth')
 
 for which_input in range(6,12):
@@ -96,7 +96,7 @@ plt.savefig('gmf_azimuth.png')
 
 fig.clf()
 
-fig,axs=plt.subplots(n_inputs,sharex=True)
+fig,axs=plt.subplots(n_inputs,sharex=True,sharey=True)
 fig.suptitle('Elevation')
 
 for which_input in range(12,18):
@@ -116,7 +116,7 @@ fig.clf()
 fig,axs=plt.subplots(2,sharex=False)
 fig.suptitle('Frequency and Stations')
 
-ylabels=['log(Frequency)','Stations']
+ylabels=['log(Frequency) membership','Stations membership']
 for which_input in range(18,20):
    centers=parameter_dict['0.antecedent.0.center'][which_input]
    sigmas=parameter_dict['0.antecedent.0.sigma'][which_input]
@@ -126,7 +126,7 @@ for which_input in range(18,20):
          axs[which_input%2].plot(x+xmean[which_input],y)
       else:
          axs[which_input%2].plot(x+xmean[which_input],y)
-      axs[which_input%2].set_xlabel(ylabels[which_input%2])
+      axs[which_input%2].set_ylabel(ylabels[which_input%2])
       axs[which_input%2].grid(1)
 
 plt.savefig('gmf_freq_stat.png')
