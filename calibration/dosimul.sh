@@ -18,14 +18,15 @@ while [ $ci -le 8 ]; do #8
   MS="L_SB"$ci".MS";
  fi
  rsync -av ~/small.ms/ $MS;
+ #rsync -av /home/sarod/work/sagecal_plain/test/sm.ms/ $MS;
  python ./changefreq.py $MS ${freqlist[$ci]}"e6"
  # with solutions
- #/home/sarod/work/DIRAC/sagecal/stable/dist/bin/sagecal_gpu  -d $MS -s sky0.txt -c cluster0.txt -p $MS'.S.solutions' -t 10 -O DATA -a 1 -B 2 -E 1
+ /home/sarod/work/DIRAC/sagecal/build/dist/bin/sagecal_gpu  -d $MS -s sky0.txt -c cluster0.txt -p $MS'.S.solutions' -t 10 -O DATA -a 1 -B 2 -E 1
  # without solutions
- /home/sarod/work/DIRAC/sagecal/build/dist/bin/sagecal_gpu  -d $MS -s sky0.txt -c cluster0.txt -t 10 -O DATA -a 1 -B 2 -E 1
+ #/home/sarod/work/DIRAC/sagecal/build/dist/bin/sagecal_gpu  -d $MS -s sky0.txt -c cluster0.txt -t 10 -O DATA -a 1 -B 2 -E 1 # -B 2
 
  python ./addnoise.py $MS
- /home/sarod/work/excon/src/MS/excon -x 0 -m $MS -c DATA -d 12000
+ /home/sarod/work/excon/src/MS/excon -R 2 -x 0 -p 6 -m $MS -c DATA -d 12000
 
  let "ci = $ci + 1";
 done
