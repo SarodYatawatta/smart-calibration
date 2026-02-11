@@ -11,7 +11,7 @@ The following executables are required:
 - For creation of blank MS [makems](https://git.astron.nl/ro/lofar/-/blob/master/CEP/MS/src/makems.cc)
 - For generating data [sagecal](https://github.com/nlesc-dirac/sagecal)
 
-After building the above software, edit ```./calibration/generate_data.py``` to point to their correct locations in your installation.
+After building the above software, edit ```./calibration/generate_data.py``` to point to their correct locations in your installation. The configuration of the problem (like adding additional directions in the sky) should be done by editing ```demixingenv.py```.
 
 # Step 1: generate training data
 
