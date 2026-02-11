@@ -45,7 +45,7 @@ class ENetEnv(gym.Env):
       'eig': spaces.Box(low=np.ones((self.N,1))*(-HIGH),high=np.ones((self.N,1))*HIGH,dtype=np.float32)
        })
 
-    self.SNR=0.1 # noise ratio
+    self.SNR=0.1 # noise ratio ||noise||/||data||
     # generate design matrix (A), noise-free data vector (y0), ground truth parameter vector (x0)
     #torch.manual_seed(19)
     # design matrix
