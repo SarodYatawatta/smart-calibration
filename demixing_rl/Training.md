@@ -11,7 +11,7 @@ The following executables are required:
 - For creation of blank MS [makems](https://git.astron.nl/ro/lofar/-/blob/master/CEP/MS/src/makems.cc)
 - For generating data [sagecal](https://github.com/nlesc-dirac/sagecal)
 
-After building the above software, edit ```./calibration/generate_data.py``` to point to their correct locations in your installation. The configuration of the problem (like adding additional directions in the sky) should be done by editing ```demixingenv.py```.
+After building the above software, edit ```./calibration/generate_data.py``` to point to their correct locations in your installation. The configuration of the problem (like adding additional directions in the sky) should be done by editing ```demixingenv.py```. For converting sky models to use in training, use ```./calibration/convertskymodel.py```.
 
 # Step 1: generate training data
 
@@ -42,4 +42,4 @@ python evaluate_tsk_msp.py
 
 to compare the two trained ML models in steps 2 and 3.
 
-wo 11 feb 2026 13:24:40 CET
+wo 11 feb 2026 14:25:23 CET
