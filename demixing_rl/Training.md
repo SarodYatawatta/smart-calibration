@@ -43,6 +43,6 @@ python evaluate_tsk_msp.py
 to compare the two trained ML models in steps 2 and 3.
 
 # References
-See [this paper](file://fuzzy-dl.pdf) information about the underlying concepts.
+See [this paper](https://github.com/SarodYatawatta/smart-calibration/blob/main/demixing_rl/fuzzy-dl.pdf) information about the underlying concepts.
 
 do 19 feb 2026  0:06:29 CET
