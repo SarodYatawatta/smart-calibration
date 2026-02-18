@@ -42,4 +42,7 @@ python evaluate_tsk_msp.py
 
 to compare the two trained ML models in steps 2 and 3.
 
-wo 11 feb 2026 14:25:23 CET
+# References
+See [this paper](file://fuzzy-dl.pdf) information about the underlying concepts.
+
+do 19 feb 2026  0:06:29 CET
