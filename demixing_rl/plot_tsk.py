@@ -74,7 +74,7 @@ for which_input in range(6):
       axs[which_input%6].plot(x+xmean[which_input],y)
       axs[which_input%6].set_ylabel(ylabels[which_input%6])
       axs[which_input%6].grid(1)
-
+axs[-1].legend(['Rule 1','Rule 2','Rule 3'])
 axs[-1].set_xlabel('Degrees')
 plt.savefig('gmf_separation.png')
 fig.clf()
@@ -91,6 +91,7 @@ for which_input in range(6,12):
       axs[which_input%6].set_ylabel(ylabels[which_input%6])
       axs[which_input%6].grid(1)
 
+axs[2].legend(['Rule 1','Rule 2','Rule 3'])
 axs[-1].set_xlabel('Degrees')
 plt.savefig('gmf_azimuth.png')
 
@@ -108,6 +109,7 @@ for which_input in range(12,18):
       axs[which_input%6].set_ylabel(ylabels[which_input%6])
       axs[which_input%6].grid(1)
 
+axs[0].legend(['Rule 1','Rule 2','Rule 3'])
 axs[-1].set_xlabel('Degrees')
 plt.savefig('gmf_elevation.png')
 
@@ -129,6 +131,7 @@ for which_input in range(18,20):
       axs[which_input%2].set_ylabel(ylabels[which_input%2])
       axs[which_input%2].grid(1)
 
+axs[0].legend(['Rule 1','Rule 2','Rule 3'])
 plt.savefig('gmf_freq_stat.png')
 
 fig.clf()
