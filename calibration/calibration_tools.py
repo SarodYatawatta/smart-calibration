@@ -84,8 +84,9 @@ def radToDec(rad):
   return hr,mins,sec
 
 # read solutions file, return solutions tensor and frequency
-# return freq,J
-def readsolutions(filename):
+# return freq,J if returnfull=False,
+# else return Ns,K as well
+def readsolutions(filename,returnfull=False):
   fh=open(filename,'r')
   # skip first 2 lines
   next(fh)
@@ -116,7 +117,12 @@ def readsolutions(filename):
       J[m,2*n+1:2*Ns*Nto:2*Ns,0]=a[8*n+4:Nto*8*Ns:Ns*8,m]+1j*a[8*n+5:Nto*8*Ns:Ns*8,m]
       J[m,2*n+1:2*Ns*Nto:2*Ns,1]=a[8*n+6:Nto*8*Ns:Ns*8,m]+1j*a[8*n+7:Nto*8*Ns:Ns*8,m]
 
-  return (freq,J)
+  if not returnfull:
+      # only return freq, and J
+      return (freq,J)
+  else:
+      return (freq,J,Ns,K)
+      
 
 
 def read_global_solutions(filename):
