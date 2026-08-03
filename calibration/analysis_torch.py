@@ -189,8 +189,8 @@ def analysis_uvwdir_loop(skymodel,clusterfile,MS,rhofile,solutionsfile,z_solfile
       for ci in range(Ts):
          process_chunk(ci,XX,XY,YX,YY,Ct,J,Hadd,T,Ts,B,N,loop_in_r,fullpol)
 
-    # scale by 8*(N*(N-1)/2)*T    
-    scalefactor=8*(N*(N-1)/2)*T 
+    # scale by 1 (as we only write the eigenvalues)
+    scalefactor=1
 
     XX=XX*scalefactor
     XY=XY*scalefactor
