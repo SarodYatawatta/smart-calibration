@@ -51,6 +51,8 @@ def inv_hessian_mult(opt,q):
  ro=torch.zeros(N).to(mydevice)
  al=torch.zeros(N).to(mydevice)
  # last or the (N-1)-th pair are the latest
+ if len(dirs)==0 or len(stps)==0:
+     return q
  ys=dirs[-1].dot(stps[-1])
  yy=dirs[-1].dot(dirs[-1])
  for i in range(N):
