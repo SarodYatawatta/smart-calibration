@@ -39,9 +39,15 @@ def inv_hessian_mult(opt,q):
  # inv(H): inverse Hessian approximation using LBFGS update
  pp=opt.state_dict()
  # get curvature pairs, y=delta(grad)
- dirs=pp['state'][0]['old_dirs']
+ try:
+   dirs=pp['state'][0]['old_dirs']
+ except:
+   dirs=None
  # s=delta(theta)
- stps=pp['state'][0]['old_stps']
+ try:
+   stps=pp['state'][0]['old_stps']
+ except:
+   stps=None
  if dirs==None or stps==None:
    # error, return q
    return q
