@@ -4,6 +4,9 @@
 #python simulate.py
 
 # Note: template data file ~/small.ms
+ROOT_MS=~/small.ms # 10 min, NCP, all stations
+#ROOT_MS=~/tiny.ms # 1 timeslot (10 s), NCP, 41 stations
+
 # replace this with your template data file
 # this script will create data files L_SB1.MS L_SB2.MS ... L_SB8.MS
 
@@ -17,7 +20,7 @@ while [ $ci -le 8 ]; do #8
  elif [ $ci -le 99 ]; then
   MS="L_SB"$ci".MS";
  fi
- rsync -av ~/small.ms/ $MS;
+ rsync -av $ROOT_MS/ $MS;
  #rsync -av /home/sarod/work/sagecal_plain/test/sm.ms/ $MS;
  python ./changefreq.py $MS ${freqlist[$ci]}"e6"
  # with solutions
