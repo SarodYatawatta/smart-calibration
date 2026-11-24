@@ -32,6 +32,7 @@ INF_SCALE=1e-3
 META_SCALE=1e-3
 
 EPS=0.01 # to make 1/(x+EPS) when x->0 not explode
+NCOMP_SCALE=0.01 # scale source degrees of freedom
 
 class DemixingFullEnv(gym.Env):
   """Custom Environment that follows gym interface
@@ -109,6 +110,7 @@ class DemixingFullEnv(gym.Env):
     # cluster id
     self.rho_id=np.ones(self.K,dtype=int)
     self.elevation=None
+    self.separation=None
     # extra fields for reset()
     self.freq_low=None
     self.freq_high=None
@@ -180,6 +182,7 @@ class DemixingFullEnv(gym.Env):
     # remember stations
     self.N=N
     self.elevation=elevation
+    self.separation=separation
     # freq range (MHz)
     self.freq_low=freq_low/1e6
     self.freq_high=freq_high/1e6
@@ -244,6 +247,7 @@ class DemixingFullEnv(gym.Env):
         tt=ctab.table(msname,readonly=True)
         t1=tt.query('ANTENNA1 != ANTENNA2',columns=col+',FLAG')
         data0=t1.getcol(col)
+        data0[~np.isfinite(data0)]=0
         flag=t1.getcol('FLAG')
         data=data0*(1-flag)
         tt.close()
@@ -301,6 +305,11 @@ class DemixingFullEnv(gym.Env):
     return a
 
   def get_hint(self):
+    # if data are not valid, return dummy hint
+    if ~np.isfinite(self.std_data) or ~np.isfinite(self.std_residual)\
+            or (self.std_data > 1e9) or (self.std_residual > 1e9):
+          return -1*np.ones(2*(self.K-1)+1)
+
     # iterate over all possible actions
     AIC=np.zeros(2**(self.K-1))
     for index in range(2**(self.K-1)):
@@ -310,7 +319,7 @@ class DemixingFullEnv(gym.Env):
         chosen_el=itertools.compress(self.elevation[:-1],action)
         any_neg_dir=any([x<1 for x in chosen_el])
         if any_neg_dir:
-           AIC[index]=1e5
+           AIC[index]=1e6
         else:
            indices=np.where(action>0)
            clus_id=np.unique(indices[0]).tolist()
@@ -321,8 +330,10 @@ class DemixingFullEnv(gym.Env):
            sb.run('mpirun -np 3 --oversubscribe '+generate_data.sagecal_mpi+' -f \'L_SB*.MS\' -A '+str(self.maxiter)+' -P 2 -s sky.txt -c '+self.cluster+' -I DATA -O MODEL_DATA -p zsol -G '+self.out_admm_rho+' -n 4 -t '+str(self.Tdelta)+' -E 1 > calibration.out',shell=True)
            # calculate noise
            std_residual=self.get_noise_(col='MODEL_DATA')
-           AIC[index]=(self.N*std_residual/self.std_data)**2+Kselected*self.N
-
+           if np.isfinite(std_residual) and (std_residual <= self.std_data):
+               AIC[index]=(self.N*std_residual/self.std_data)**2+Kselected*self.N
+           else:
+               AIC[index]=1e6
     # take softmin
     probs=np.exp(-AIC/self.tau)/np.sum(np.exp(-AIC/self.tau))
     # map 2**(K-1) to K-1 vector
@@ -338,6 +349,10 @@ class DemixingFullEnv(gym.Env):
     hint_full=np.zeros(2*(self.K-1)+1)
     hint_full[0:self.K-1]=hint
     source_model=np.zeros(self.K-1)
+    # if all(hint) <0, move up smallest negative to positive
+    if np.max(hint) < 0 :
+        hint += np.abs(np.max(hint))+EPS
+
     for ci in range((self.K-1)):
         # if this source is selected
         if (hint[ci]>0.0):
@@ -360,14 +375,15 @@ class DemixingFullEnv(gym.Env):
                # append this cluster to self.out_admm_rho
                with open(self.out_admm_rho,'a') as ff:
                   ff.write('#\n')
-                  ff.write(str(self.source_models[si][0])+' 1 1.0')
+                  ff.write(str(self.source_models[si][0])+' 1 1.0 1.0')
                   ff.write('\n')
                # run calibration
                sb.run('mpirun -np 3 --oversubscribe '+generate_data.sagecal_mpi+' -f \'L_SB*.MS\' -A '+str(self.maxiter)+' -P 2 -s sky.txt -c '+self.cluster+' -I DATA -O MODEL_DATA -p zsol -G '+self.out_admm_rho+' -n 4 -t '+str(self.Tdelta)+' -E 1 > calibration.out',shell=True)
                residual_vals[cj]=self.get_noise_(col='MODEL_DATA')
                cj +=1
-            # weight noise reduction by log(source_components)
-            selection_criterion=(residual_vals/self.std_data)*np.log(source_components)
+            # AIC for model parameters noise reduction by log(source_components)
+            # so AIC ~ normalized_residual +  log(n_components)*scale_factor
+            selection_criterion=(residual_vals/(self.std_data+EPS))**2 + NCOMP_SCALE*np.log(source_components)
             # map choice 0,1,2,.., max_cluster-1 -> [-1,1]
             print(f'{ci} selecting {np.argmin(selection_criterion)} out of {max_id}')
             hint_full[self.K-1+ci]=np.argmin(selection_criterion)/max_id - 0.5
@@ -406,7 +422,7 @@ class DemixingFullEnv(gym.Env):
            # append this cluster to self.out_admm_rho
            with open(self.out_admm_rho,'a') as ff:
                   ff.write('#\n')
-                  ff.write(str(cluster_id)+' 1 1.0')
+                  ff.write(str(cluster_id)+' 1 1.0 1.0')
                   ff.write('\n')
       # run calibration
       sb.run('mpirun -np 3 --oversubscribe '+generate_data.sagecal_mpi+' -f \'L_SB*.MS\' -A '+str(self.maxiter)+' -P 2 -s sky.txt -c '+self.cluster+' -I DATA -O MODEL_DATA -p zsol -G '+self.out_admm_rho+' -n 4 -t '+str(self.Tdelta)+' -E 1 > calibration.out',shell=True)
@@ -439,12 +455,15 @@ class DemixingFullEnv(gym.Env):
     print('%%%%%%%%%%%%%%%%%%%%%%')
 
   def close (self):
-    for ci in range(self.Nf):
-       MS='L_SB'+str(ci)+'.MS'
-       sb.run('rm -rf '+MS,shell=True)
+    pass
 
   def __del__(self):
-      pass
+    for ci in range(self.Nf):
+       MS='L_SB'+str(ci)+'.MS'
+       try:
+         sb.run('rm -rf '+MS,shell=True)
+       except:
+           pass
 
 #dem=DemixingFullEnv(K=6,Nf=3,Npix=1024,Tdelta=10)
 #obs=dem.reset()
