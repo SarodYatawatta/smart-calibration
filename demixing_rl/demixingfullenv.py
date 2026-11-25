@@ -132,7 +132,7 @@ class DemixingFullEnv(gym.Env):
     # action : 2*(K-1): expected noise reduction
     assert(len(action)==2*(self.K-1)+1)
     done=False # make sure to return True at some point
-    std.residual=self.evaluate_full_hint(action)
+    self.std_residual=self.evaluate_full_hint(action)
     # metadata 0:K-1 are separations,
     # For the directions included in calibration, set separation to 0
     metadata_update=self.metadata.copy()
