@@ -450,10 +450,10 @@ class DemixingFullEnv(gym.Env):
        except:
            pass
 
-dem=DemixingFullEnv(K=6,Nf=3,Npix=1024,Tdelta=10)
-obs=dem.reset()
-hint=dem.get_hint()
-print(hint)
+#dem=DemixingFullEnv(K=6,Nf=3,Npix=1024,Tdelta=10)
+#obs=dem.reset()
+#hint=dem.get_hint()
+#print(hint)
 #action=np.zeros(5+1)
 #action[-1]=0 # max iterations
 #action[0]=1
