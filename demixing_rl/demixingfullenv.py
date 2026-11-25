@@ -71,14 +71,14 @@ class DemixingFullEnv(gym.Env):
     )
     # CasA: source_models[0:3] CygA: source_models[3:7]
     # HerA: source_models[7:10] TauA: source_models[10:13]
-    # VirA: source_models[13:18]
+    # VirA: source_models[13:17]
     self.source_idx=(
             np.arange(0,3), np.arange(3,7), np.arange(7,10), np.arange(10,13), np.arange(13,17)
             )
     self.K=K
     self.Npix=Npix
-    # actions: 0,1,..,K-1 : action (K-1+1)x1 each in [-1,1]
-    self.action_space = spaces.Box(low=np.ones((self.K,1))*(-1),high=np.ones((self.K,1))*(1),dtype=np.float32)
+    # actions: 0,1,..,K-1 : action ((K-1)+(K-1)+1)x1 each in [-1,1]
+    self.action_space = spaces.Box(low=np.ones((2*self.K-1,1))*(-1),high=np.ones((2*self.K-1,1))*(1),dtype=np.float32)
     # observation (state space): residual
     # metadata: separation,azimuth,elevation (K values),frequency,n_stations
     self.observation_space = spaces.Dict({
@@ -295,7 +295,7 @@ class DemixingFullEnv(gym.Env):
         # check if there are -ve elevation clusters
         # if so, give a high AIC
         chosen_el=itertools.compress(self.elevation[:-1],action)
-        any_neg_dir=any([x<1 for x in chosen_el])
+        any_neg_dir=any([x < 0 for x in chosen_el])
         if any_neg_dir:
            AIC[index]=MAX_AIC
         else:
@@ -336,7 +336,7 @@ class DemixingFullEnv(gym.Env):
     # append remaining hint K-1 values for source model, 1 value for expected noise reduction (%)
     hint_full=np.zeros(2*(self.K-1)+1)
     source_model=np.zeros(self.K-1)
-    # if all(hint) <0, move up smallest negative to positive
+    # if all(hint) <0, move up largest negative (closest to zero) to positive
     if np.max(hint) < 0 :
         hint += np.abs(np.max(hint))+EPS
 
@@ -398,8 +398,8 @@ class DemixingFullEnv(gym.Env):
         if (hint[ci]>0.0):
            # find how many possible source models for this cluster
            max_id=len(self.source_idx[ci])
-           # get back from [-1,1] to real id
-           source_id=int((hint[self.K-1+ci]+0.5)*max_id)
+           # get back from [-1,1] to real id in 0:max_id
+           source_id=min(max_id-1,int((hint[self.K-1+ci]+0.5)*max_id))
            cluster_id0=self.source_idx[ci][source_id] # ordinal (row) in cluster file
            cluster_id=self.source_models[cluster_id0][0] # actual cluster
            print(f'Including {ci} source model {source_id} row {cluster_id0} cluster {cluster_id} {self.source_models[cluster_id0][2]}')
