@@ -413,7 +413,7 @@ class DemixingFullEnv(gym.Env):
            source_id=int((hint[self.K-1+ci]+0.5)*max_id)
            cluster_id0=self.source_idx[ci][source_id] # ordinal (row) in cluster file
            cluster_id=self.source_models[cluster_id0][0] # actual cluster
-           print(f'adding {ci} source model {source_id} row {cluster_id0} cluster {cluster_id}')
+           print(f'Including {ci} source model {source_id} row {cluster_id0} cluster {cluster_id} {self.source_models[cluster_id0][2]}')
            # append this cluster to self.cluster file
            with open(self.cluster,'a') as ff:
                   ff.write('#\n')
