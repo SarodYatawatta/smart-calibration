@@ -319,6 +319,13 @@ class DemixingFullEnv(gym.Env):
         hint+=probs[ci]*self.scalar_to_kvec(ci,self.K-1)
     # transform [0,1] back to [-1,1] space
     hint=(hint-(HIGH+LOW)/2)*(2/(HIGH-LOW))
+
+    # manually check source 0 and 1
+    if self.separation[0] < 25 and hint[0] < 0:
+        hint[0]=1
+    if self.separation[1] < 25 and hint[1] < 0:
+        hint[1]=1
+
     # now we have the directions to select,
     # need to try out possible source models
     assert(self.K-1==len(self.source_idx))
@@ -443,10 +450,10 @@ class DemixingFullEnv(gym.Env):
        except:
            pass
 
-#dem=DemixingFullEnv(K=6,Nf=3,Npix=1024,Tdelta=10)
-#obs=dem.reset()
-#hint=dem.get_hint()
-#print(hint)
+dem=DemixingFullEnv(K=6,Nf=3,Npix=1024,Tdelta=10)
+obs=dem.reset()
+hint=dem.get_hint()
+print(hint)
 #action=np.zeros(5+1)
 #action[-1]=0 # max iterations
 #action[0]=1
