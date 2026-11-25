@@ -23,9 +23,6 @@ else:
 # action direction: range [0,1], select source if >0.5
 LOW=0.0
 HIGH=1.
-# action max ADMM iter: range [5,30] 
-LOW_iter=5
-HIGH_iter=30
 
 # scaling of input data to prevent saturation
 INF_SCALE=1e-3
@@ -130,41 +127,20 @@ class DemixingFullEnv(gym.Env):
     self.tau=100 # temperature, divide AIC by 1/tau before softmin()
 
   def step(self, action):
-    # action : Kx1, 0,1,..,K-2 : direction probabilities, 
-    action_rho=action[0:self.K-1]
-    action_maxiter=action[self.K-1]
+    # action : 0:K-1 values, 0,1,..,K-2 : direction probabilities (excluding target)
+    # action : K-1:2(K-1): which source model to use for each K-1 direction (0 if the direction is not selected)
+    # action : 2*(K-1): expected noise reduction
+    assert(len(action)==2*(self.K-1)+1)
     done=False # make sure to return True at some point
-    # update state based on the action [-1,1] ->  rho = scale*(action)
-    rho =action_rho*(HIGH-LOW)/2+(HIGH+LOW)/2
-    # map [-1,1] to max iterations (integer)
-    self.maxiter =int(action_maxiter*(HIGH_iter-LOW_iter)/2+(HIGH_iter+LOW_iter)/2)
-    # find indices of selected directions
-    indices=np.where(rho.squeeze()>0.5)
-    self.clus_id=np.unique(indices[0]).tolist()
-    self.clus_id.append(self.K-1)
-    # check if current cluster selection (action) is same as previous
-    if self.prev_clus_id==self.clus_id:
-        #done=True
-        pass
-    else:
-        self.prev_clus_id=self.clus_id.copy()
-    Kselected=len(self.clus_id)
-    # create cluster file clusters based on clus_id indices
-    self.print_clusters_()
-    self.output_rho_()
-    # run calibration, use --oversubscribe if not enough slots are available
-    sb.run('mpirun -np 3 --oversubscribe '+generate_data.sagecal_mpi+' -f \'L_SB*.MS\'  -A '+str(self.maxiter)+' -P 2 -s sky.txt -c '+self.cluster+' -I DATA -O MODEL_DATA -p zsol -G '+self.out_admm_rho+' -n 4 -t '+str(self.Tdelta)+' -E 1 > calibration.out',shell=True)
-
+    std.residual=self.evaluate_full_hint(action)
     # metadata 0:K-1 are separations,
     # For the directions included in calibration, set separation to 0
     metadata_update=self.metadata.copy()
-    metadata_update[self.clus_id]=0
     observation={
       'metadata': metadata_update*META_SCALE }
 
-    self.std_residual=self.get_noise_(col='MODEL_DATA')
-
     # calculate reward, subtract from default step reward
+    Kselected=np.sum(action[:self.K-1]>0.5)
     reward=self.calculate_reward_(Kselected)-self.reward0
     print('STD %f %f K %d N %d reward %f'%(self.std_data,self.std_residual,Kselected,self.N,reward))
     info={}
@@ -197,7 +173,7 @@ class DemixingFullEnv(gym.Env):
     self.print_clusters_()
     self.output_rho_()
 
-    self.maxiter=10 # need to be within [LOW_iter,HIGH_iter]
+    self.maxiter=20 # maximum ADMM iterations (fixed)
     # run calibration, use --oversubscribe if not enough slots are available
     sb.run('mpirun -np 3 --oversubscribe '+generate_data.sagecal_mpi+' -f \'L_SB*.MS\'  -A '+str(self.maxiter)+' -P 2 -s sky.txt -c '+self.cluster+' -I DATA -O MODEL_DATA -p zsol -G '+self.out_admm_rho+' -n 4 -t '+str(self.Tdelta)+' -E 1 > calibration.out',shell=True)
 
@@ -305,7 +281,7 @@ class DemixingFullEnv(gym.Env):
     return a
 
   def get_hint(self):
-    # if data are not valid, return dummy hint
+    # if data are not valid (either simulation, calibration error), return dummy hint
     if ~np.isfinite(self.std_data) or ~np.isfinite(self.std_residual)\
             or (self.std_data > 1e9) or (self.std_residual > 1e9):
           print(f'Invalid data {self.std_data} residual {self.std_residual}')
