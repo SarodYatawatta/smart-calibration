@@ -326,6 +326,9 @@ class DemixingFullEnv(gym.Env):
         hint[0]=1
     if self.separation[1] < 25 and hint[1] < 0:
         hint[1]=1
+    for ci in range(2,self.K-1):
+        if self.separation[ci] < 10 and self.elevation[ci] > 0 and hint[ci] < 0:
+            hint[ci]=1
 
     # now we have the directions to select,
     # need to try out possible source models
