@@ -25,8 +25,9 @@ LOW=0.0
 HIGH=1.
 
 # scaling of input data to prevent saturation
-INF_SCALE=1e-3
 META_SCALE=1e-3
+MAX_DATA=1e18
+MAX_AIC=1e6
 
 EPS=0.01 # to make 1/(x+EPS) when x->0 not explode
 NCOMP_SCALE=0.01 # scale source degrees of freedom
@@ -283,7 +284,7 @@ class DemixingFullEnv(gym.Env):
   def get_hint(self):
     # if data are not valid (either simulation, calibration error), return dummy hint
     if ~np.isfinite(self.std_data) or ~np.isfinite(self.std_residual)\
-            or (self.std_data > 1e9) or (self.std_residual > 1e9):
+            or (self.std_data > MAX_DATA) or (self.std_residual > MAX_DATA):
           print(f'Invalid data {self.std_data} residual {self.std_residual}')
           return np.zeros(2*(self.K-1)+1)
 
@@ -296,7 +297,7 @@ class DemixingFullEnv(gym.Env):
         chosen_el=itertools.compress(self.elevation[:-1],action)
         any_neg_dir=any([x<1 for x in chosen_el])
         if any_neg_dir:
-           AIC[index]=1e6
+           AIC[index]=MAX_AIC
         else:
            indices=np.where(action>0)
            clus_id=np.unique(indices[0]).tolist()
@@ -310,7 +311,7 @@ class DemixingFullEnv(gym.Env):
            if np.isfinite(std_residual) and (std_residual <= self.std_data):
                AIC[index]=(self.N*std_residual/self.std_data)**2+Kselected*self.N
            else:
-               AIC[index]=1e6
+               AIC[index]=MAX_AIC
     # take softmin
     probs=np.exp(-AIC/self.tau)/np.sum(np.exp(-AIC/self.tau))
     # map 2**(K-1) to K-1 vector
