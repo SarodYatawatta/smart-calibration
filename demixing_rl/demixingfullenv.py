@@ -308,7 +308,7 @@ class DemixingFullEnv(gym.Env):
     # if data are not valid, return dummy hint
     if ~np.isfinite(self.std_data) or ~np.isfinite(self.std_residual)\
             or (self.std_data > 1e9) or (self.std_residual > 1e9):
-          return -1*np.ones(2*(self.K-1)+1)
+          return np.zeros(2*(self.K-1)+1)
 
     # iterate over all possible actions
     AIC=np.zeros(2**(self.K-1))

@@ -22,14 +22,18 @@ buffer=TrainingBuffer(n_samples,n_input=M,n_output=2*(K-1)+1)
 # determined by the loaded file)
 #buffer.load_checkpoint()
 
+n_filled=0
 for ci in range(n_iter):
    observation = env.reset()
    hint=env.get_hint()
-   x=observation['metadata']
-   y=hint
-   buffer.store_observation(x,y)
-   # always save buffer after each iteration
-   buffer.save_checkpoint()
-   print(f'Iteration {ci}/{n_iter}')
+   # exclude all zero hints
+   if hint.any():
+     x=observation['metadata']
+     y=hint
+     n_filled +=1
+     buffer.store_observation(x,y)
+     # always save buffer after each iteration
+     buffer.save_checkpoint()
+   print(f'Iteration {ci}/{n_iter} filled {n_filled}')
 
 buffer.save_checkpoint()
