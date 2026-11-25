@@ -308,6 +308,7 @@ class DemixingFullEnv(gym.Env):
     # if data are not valid, return dummy hint
     if ~np.isfinite(self.std_data) or ~np.isfinite(self.std_residual)\
             or (self.std_data > 1e9) or (self.std_residual > 1e9):
+          print(f'Invalid data {self.std_data} residual {self.std_residual}')
           return np.zeros(2*(self.K-1)+1)
 
     # iterate over all possible actions
@@ -347,11 +348,12 @@ class DemixingFullEnv(gym.Env):
     assert(self.K-1==len(self.source_idx))
     # append remaining hint K-1 values for source model, 1 value for expected noise reduction (%)
     hint_full=np.zeros(2*(self.K-1)+1)
-    hint_full[0:self.K-1]=hint
     source_model=np.zeros(self.K-1)
     # if all(hint) <0, move up smallest negative to positive
     if np.max(hint) < 0 :
         hint += np.abs(np.max(hint))+EPS
+
+    hint_full[0:self.K-1]=hint
 
     for ci in range((self.K-1)):
         # if this source is selected
