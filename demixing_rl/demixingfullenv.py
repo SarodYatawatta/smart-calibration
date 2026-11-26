@@ -371,12 +371,11 @@ class DemixingFullEnv(gym.Env):
         tt = ctab.table(msname, readonly=True)
         t1 = tt.query("ANTENNA1 != ANTENNA2", columns=col + ",FLAG")
         data0 = t1.getcol(col)
+        # set nans/infs to 0
         data0[~np.isfinite(data0)] = 0
         flag = t1.getcol("FLAG")
         data = data0 * (1 - flag)
         tt.close()
-        # set nans to 0
-        data[np.isnan(data)] = 0.0
         # form IQUV
         sI = (data[:, :, 0] + data[:, :, 3]) * 0.5
         return sI.std()
@@ -682,7 +681,6 @@ class DemixingFullEnv(gym.Env):
                 sb.run("rm -rf " + MS, shell=True)
             except:
                 pass
-
 
 #dem=DemixingFullEnv(K=6,Nf=3,Npix=1024,Tdelta=10)
 #obs=dem.reset()
