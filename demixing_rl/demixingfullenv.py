@@ -2,9 +2,7 @@ import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
 import subprocess as sb
-import torch
 import os, sys, itertools
-from astropy.io import fits
 import casacore.tables as ctab
 
 # append script path
@@ -14,14 +12,8 @@ from calibration_tools import *
 import generate_data
 from generate_data import simulate_data
 
-# (try to) use a GPU for computation?
-use_cuda = True
-if use_cuda and torch.cuda.is_available():
-    mydevice = torch.device("cuda")
-else:
-    mydevice = torch.device("cpu")
-
 # action direction: range [0,1], select source if >0.5
+# but externally it is passed in [-1,1]
 LOW = 0.0
 HIGH = 1.0
 
@@ -693,7 +685,7 @@ class DemixingFullEnv(gym.Env):
 #obs,_=dem.reset()
 #hint=dem.get_hint()
 #print(hint)
-#action=np.zeros(5+1)
+#action=np.zeros(2*6-1)
 #action[-1]=0 # max iterations
 #action[0]=1
 #obs,reward,_,_,_=dem.step(action=action)
