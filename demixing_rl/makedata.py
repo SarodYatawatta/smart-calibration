@@ -22,7 +22,7 @@ buffer=TrainingBuffer(n_samples,n_input=M,n_output=2*(K-1)+1)
 # determined by the loaded file)
 #buffer.load_checkpoint()
 
-n_filled=0
+n_filled=buffer.mem_cntr
 for ci in range(n_iter):
    observation = env.reset()
    hint=env.get_hint()
