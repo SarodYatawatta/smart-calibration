@@ -572,15 +572,27 @@ class DemixingFullEnv(gym.Env):
                 print(
                     f"{ci} selecting {np.argmin(selection_criterion)} out of {max_id}"
                 )
-                hint_full[self.K - 1 + ci] = (
-                    np.argmin(selection_criterion) / max_id - 0.5
-                )
+                hint_full[self.K - 1 + ci] = self.source_to_hint(np.argmin(selection_criterion), max_id)
             else:
                 print(f"{ci} not selected (using source model with lowest components)")
                 hint_full[self.K - 1 + ci] = 0
         # expected noise reduction (ratio)
         hint_full[-1] = min(1.0, self.evaluate_full_hint(hint_full) / self.std_data)
         return hint_full
+
+    def hint_to_source(self, hint, max_id):
+        """
+        convert hint in [-1,1] to a valid source id in 0...max_id-1
+        """
+        source_id = min(max_id - 1, int((hint + 0.5) * max_id))
+        return source_id
+
+    def source_to_hint(self, source_id, max_id):
+        """
+        convert source in [0,max_id-1] to hint in [-1,1]
+        """
+        hint =  source_id / max_id - 0.5
+        return hint
 
     def evaluate_full_hint(self, hint):
         """
@@ -598,7 +610,8 @@ class DemixingFullEnv(gym.Env):
                 # find how many possible source models for this cluster
                 max_id = len(self.source_idx[ci])
                 # get back from [-1,1] to real id in 0:max_id
-                source_id = min(max_id - 1, int((hint[self.K - 1 + ci] + 0.5) * max_id))
+                source_id = self.hint_to_source(hint[self.K - 1 + ci], max_id)
+
                 cluster_id0 = self.source_idx[ci][
                     source_id
                 ]  # ordinal (row) in cluster file
@@ -671,9 +684,9 @@ class DemixingFullEnv(gym.Env):
                 pass
 
 
-# dem=DemixingFullEnv(K=6,Nf=3,Npix=1024,Tdelta=10)
-# obs=dem.reset()
-# hint=dem.get_hint()
+#dem=DemixingFullEnv(K=6,Nf=3,Npix=1024,Tdelta=10)
+#obs=dem.reset()
+#hint=dem.get_hint()
 # print(hint)
 # action=np.zeros(5+1)
 # action[-1]=0 # max iterations
