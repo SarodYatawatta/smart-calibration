@@ -272,9 +272,9 @@ class DemixingFullEnv(gym.Env):
         if self.provide_hint:
             if self.hint is None:
                 self.hint = self.get_hint()
-            return observation, reward, done, self.hint, info
+            return observation, reward, False, done, self.hint, info
         else:
-            return observation, reward, done, info
+            return observation, reward, False, done, info
 
     def reset(self):
         # run input simulations, for debugging use e.g., Tdelta=300,do_image=True
@@ -334,7 +334,7 @@ class DemixingFullEnv(gym.Env):
         self.prev_clus_id = self.clus_id.copy()
 
         self.hint = None
-        return observation
+        return observation, {}
 
     # return the average std of data, by making images
     def get_image_noise_(self, col="DATA"):
@@ -683,23 +683,23 @@ class DemixingFullEnv(gym.Env):
                 pass
 
 #dem=DemixingFullEnv(K=6,Nf=3,Npix=1024,Tdelta=10)
-#obs=dem.reset()
+#obs,_=dem.reset()
 #hint=dem.get_hint()
 # print(hint)
 # action=np.zeros(5+1)
 # action[-1]=0 # max iterations
 # action[0]=1
-# obs,reward,_,_=dem.step(action=action)
+# obs,reward,_,_,_=dem.step(action=action)
 # sb.run('mv influenceI.fits inf1.fits',shell=True)
 # action[1]=1
-# obs,reward,_,_=dem.step(action=action)
+# obs,reward,_,_,_=dem.step(action=action)
 # sb.run('mv influenceI.fits inf2.fits',shell=True)
 # action[2]=1
-# obs,reward,_,_=dem.step(action=action)
+# obs,reward,_,_,_=dem.step(action=action)
 # sb.run('mv influenceI.fits inf3.fits',shell=True)
 # action[3]=1
-# obs,reward,_,_=dem.step(action=action)
+# obs,reward,_,_,_=dem.step(action=action)
 # sb.run('mv influenceI.fits inf4.fits',shell=True)
 # action[4]=1
-# obs,reward,_,_=dem.step(action=action)
+# obs,reward,_,_,_=dem.step(action=action)
 # sb.run('mv influenceI.fits inf5.fits',shell=True)
