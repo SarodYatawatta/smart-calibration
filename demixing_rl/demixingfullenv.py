@@ -249,11 +249,13 @@ class DemixingFullEnv(gym.Env):
         self.tau = 100  # temperature, divide AIC by 1/tau before softmin()
 
     def step(self, action):
+        # action in [-1,1]
         # action : 0:K-1 values, 0,1,..,K-2 : direction probabilities (excluding target)
         # action : K-1:2(K-1): which source model to use for each K-1 direction (0 if the direction is not selected)
         # action : 2*(K-1): expected noise reduction
         assert len(action) == 2 * (self.K - 1) + 1
         done = False  # make sure to return True at some point
+        # note: action in [-1,1]
         self.std_residual = self.evaluate_full_hint(action)
         # metadata 0:K-1 are separations,
         # For the directions included in calibration, set separation to 0
@@ -261,6 +263,8 @@ class DemixingFullEnv(gym.Env):
         observation = {"metadata": metadata_update * META_SCALE}
 
         # calculate reward, subtract from default step reward
+        # action in [-1,1]: map to [0,1]
+        action = action / (2 / (HIGH-LOW))+(HIGH+LOW)/2
         Kselected = np.sum(action[: self.K - 1] > 0.5)
         reward = self.calculate_reward_(Kselected) - self.reward0
         print(
@@ -519,6 +523,7 @@ class DemixingFullEnv(gym.Env):
         if np.max(hint) < 0:
             hint += np.abs(np.max(hint)) + EPS
 
+        # first K-1 in [-1,1]
         hint_full[0 : self.K - 1] = hint
 
         for ci in range((self.K - 1)):
@@ -583,20 +588,22 @@ class DemixingFullEnv(gym.Env):
         """
         convert hint in [-1,1] to a valid source id in 0...max_id-1
         """
-        source_id = min(max_id - 1, int((hint + 0.5) * max_id))
+        source_id = min(max_id - 1, int((hint/2.0 + 0.5) * max_id))
         return source_id
 
     def source_to_hint(self, source_id, max_id):
         """
         convert source in [0,max_id-1] to hint in [-1,1]
         """
-        hint =  source_id / max_id - 0.5
+        hint =  (source_id / max_id - 0.5)*2.0
         return hint
 
     def evaluate_full_hint(self, hint):
         """
         hint:0...K-1, > 0.5 means source is selected
         hint:K..2*K-1, source model index in [-0.5,0.5] to use for selected sources
+
+        hint in [-1,1], except hint[-1] which is being output
         """
         # create cluster file with only target and this cluster
         clus_id = list()
@@ -685,21 +692,21 @@ class DemixingFullEnv(gym.Env):
 #dem=DemixingFullEnv(K=6,Nf=3,Npix=1024,Tdelta=10)
 #obs,_=dem.reset()
 #hint=dem.get_hint()
-# print(hint)
-# action=np.zeros(5+1)
-# action[-1]=0 # max iterations
-# action[0]=1
-# obs,reward,_,_,_=dem.step(action=action)
-# sb.run('mv influenceI.fits inf1.fits',shell=True)
-# action[1]=1
-# obs,reward,_,_,_=dem.step(action=action)
-# sb.run('mv influenceI.fits inf2.fits',shell=True)
-# action[2]=1
-# obs,reward,_,_,_=dem.step(action=action)
-# sb.run('mv influenceI.fits inf3.fits',shell=True)
-# action[3]=1
-# obs,reward,_,_,_=dem.step(action=action)
-# sb.run('mv influenceI.fits inf4.fits',shell=True)
-# action[4]=1
-# obs,reward,_,_,_=dem.step(action=action)
-# sb.run('mv influenceI.fits inf5.fits',shell=True)
+#print(hint)
+#action=np.zeros(5+1)
+#action[-1]=0 # max iterations
+#action[0]=1
+#obs,reward,_,_,_=dem.step(action=action)
+#sb.run('mv influenceI.fits inf1.fits',shell=True)
+#action[1]=1
+#obs,reward,_,_,_=dem.step(action=action)
+#sb.run('mv influenceI.fits inf2.fits',shell=True)
+#action[2]=1
+#obs,reward,_,_,_=dem.step(action=action)
+#sb.run('mv influenceI.fits inf3.fits',shell=True)
+#action[3]=1
+#obs,reward,_,_,_=dem.step(action=action)
+#sb.run('mv influenceI.fits inf4.fits',shell=True)
+#action[4]=1
+#obs,reward,_,_,_=dem.step(action=action)
+#sb.run('mv influenceI.fits inf5.fits',shell=True)
