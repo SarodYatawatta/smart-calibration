@@ -256,7 +256,7 @@ class DemixingFullEnv(gym.Env):
 
         # calculate reward, subtract from default step reward
         # action in [-1,1]: map to [0,1]
-        action = action / (2 / (HIGH-LOW))+(HIGH+LOW)/2
+        action = action / (2 / (HIGH - LOW)) + (HIGH + LOW) / 2
         Kselected = np.sum(action[: self.K - 1] > 0.5)
         reward = self.calculate_reward_(Kselected) - self.reward0
         print(
@@ -496,14 +496,12 @@ class DemixingFullEnv(gym.Env):
         # transform [0,1] back to [-1,1] space
         hint = (hint - (HIGH + LOW) / 2) * (2 / (HIGH - LOW))
 
-        # manually check source 0 and 1
-        if self.separation[0] < 25 and hint[0] < 0:
-            hint[0] = 1
-        if self.separation[1] < 25 and hint[1] < 0:
-            hint[1] = 1
-        for ci in range(2, self.K - 1):
-            if self.separation[ci] < 10 and self.elevation[ci] > 0 and hint[ci] < 0:
+        # manually set old constraints
+        for ci in range(self.K - 1):
+            if self.separation[ci] < 30:
                 hint[ci] = 1
+            if (hint[ci] > 0) and (self.separation[ci] > 90 or self.elevation[ci] < 0):
+                hint[ci] = -1
 
         # now we have the directions to select,
         # need to try out possible source models
@@ -568,7 +566,9 @@ class DemixingFullEnv(gym.Env):
                 print(
                     f"{ci} selecting {np.argmin(selection_criterion)} out of {max_id}"
                 )
-                hint_full[self.K - 1 + ci] = self.source_to_hint(np.argmin(selection_criterion), max_id)
+                hint_full[self.K - 1 + ci] = self.source_to_hint(
+                    np.argmin(selection_criterion), max_id
+                )
             else:
                 print(f"{ci} not selected (using source model with lowest components)")
                 hint_full[self.K - 1 + ci] = 0
@@ -580,14 +580,14 @@ class DemixingFullEnv(gym.Env):
         """
         convert hint in [-1,1] to a valid source id in 0...max_id-1
         """
-        source_id = min(max_id - 1, int((hint/2.0 + 0.5) * max_id))
+        source_id = min(max_id - 1, int((hint / 2.0 + 0.5) * max_id))
         return source_id
 
     def source_to_hint(self, source_id, max_id):
         """
         convert source in [0,max_id-1] to hint in [-1,1]
         """
-        hint =  (source_id / max_id - 0.5)*2.0
+        hint = (source_id / max_id - 0.5) * 2.0
         return hint
 
     def evaluate_full_hint(self, hint):
@@ -680,6 +680,7 @@ class DemixingFullEnv(gym.Env):
                 sb.run("rm -rf " + MS, shell=True)
             except:
                 pass
+
 
 #dem=DemixingFullEnv(K=6,Nf=3,Npix=1024,Tdelta=10)
 #obs,_=dem.reset()
